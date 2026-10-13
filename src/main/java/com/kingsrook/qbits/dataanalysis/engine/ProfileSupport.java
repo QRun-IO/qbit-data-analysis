@@ -56,7 +56,7 @@ public final class ProfileSupport
     *******************************************************************************/
    public static BigDecimal share(long count, long rows)
    {
-      return (rows == 0 ? BigDecimal.ZERO : BigDecimal.valueOf(count).divide(BigDecimal.valueOf(rows), MathContext.DECIMAL128));
+      return (rows == 0 ? BigDecimal.ZERO : BigDecimal.valueOf(count).divide(BigDecimal.valueOf(rows), 6, java.math.RoundingMode.HALF_UP).stripTrailingZeros());
    }
 
 
@@ -76,7 +76,12 @@ public final class ProfileSupport
     *******************************************************************************/
    public static Metric metric(String key, Serializable value, ValueType type)
    {
-      return (new Metric().withKey(key).withLabel(key).withValue(value).withValueType(type).withFormatted(value == null ? null : value.toString()));
+      if(type == ValueType.PERCENT && value != null)
+      {
+         value = AnalysisFormatting.ratio(new BigDecimal(value.toString()));
+      }
+      return (new Metric().withKey(key).withLabel(MetricLabels.label(key, type)).withValue(value).withValueType(type)
+         .withFormatted(AnalysisFormatting.scalar(key, value, type)));
    }
 
 
@@ -116,7 +121,7 @@ public final class ProfileSupport
                label = translated;
             }
          }
-         result.add(new ValueCount().withValue(group.value()).withLabel(label).withCount(group.count()).withShare(group.share() == null ? share(group.count(), total) : group.share())
+         result.add(new ValueCount().withValue(group.value()).withLabel(label).withCount(group.count()).withShare(group.share() == null ? share(group.count(), total) : AnalysisFormatting.ratio(group.share()))
             .withDrill(DrillFilters.drill(table, filter, group.condition())));
       }
       return (result);

@@ -86,7 +86,7 @@ public class ColumnProfiler
       QFieldType type = field.getType();
       if(type == QFieldType.INTEGER || type == QFieldType.LONG || type == QFieldType.DECIMAL)
       {
-         numeric(result, filter, drillFilter, rows);
+         numeric(result, filter, drillFilter, rows, field);
       }
       else if(type == QFieldType.DATE || type == QFieldType.DATE_TIME)
       {
@@ -95,13 +95,18 @@ public class ColumnProfiler
       else if(type.isStringLike())
       {
          AnalysisBackend.LengthSummary summary = backend.lengthSummary(table, filter, name);
+         AnalysisBackend.PatternSummary patterns = backend.patterns(table, filter, name, 10_000);
+         long patternValues = patterns.values();
          TextProfile text = new TextProfile().withHistogram(ProfileSupport.values(table, drillFilter, null, summary.histogram(), rows))
-            .withPatterns(ProfileSupport.values(table, drillFilter, null, backend.patterns(table, filter, name, 10_000), Math.min(rows, 10_000)))
-            .withSampleRows(Math.min(scope.rowsScanned(), 10_000));
+            .withPatterns(ProfileSupport.values(table, drillFilter, null, patterns.groups(), patternValues))
+            .withSampleRows(patternValues);
          summary.metrics().forEach((key, value) -> text.getMetrics().add(ProfileSupport.metric(key, value, ValueType.DECIMAL)));
          result.withText(text);
-         result.getWarnings().add(scope.samplePercent() == null ? "Patterns use the first " + Math.min(rows, 10_000) + " rows by primary key."
-            : "Patterns use up to " + Math.min(scope.rowsScanned(), 10_000) + " sampled rows.");
+         if(patterns.truncated())
+         {
+            result.getWarnings().add(scope.samplePercent() == null ? "Patterns are based on the first " + AnalysisFormatting.number(patternValues, 0) + " values."
+               : "Patterns are based on " + AnalysisFormatting.number(patternValues, 0) + " sampled values.");
+         }
       }
       else if(type == QFieldType.BOOLEAN)
       {
@@ -142,14 +147,15 @@ public class ColumnProfiler
       else
       {
          result.withChart(ProfileSupport.chart(ChartKind.TIME_SERIES, ChartKind.BAR, name, result.getDates().getBuckets()));
+         result.getChart().getX().withLabel(field.getLabel() + (result.getDates().getUnit() == null ? "" : " (" + result.getDates().getUnit().toLowerCase(java.util.Locale.ROOT) + ")"));
       }
-      if(rows == 0)
+      if(scope.total() == 0)
       {
          result.getWarnings().add("No readable records match this analysis scope.");
       }
-      else if(counts.nonNull() == 0 && (!scope.estimate() || scope.rowsScanned() > 0))
+      else if(counts.nonNull() == 0 && rows > 0 && (!scope.estimate() || scope.rowsScanned() > 0))
       {
-         result.getWarnings().add("All values in this analysis scope are null.");
+         result.getWarnings().add(scope.estimate() ? "All observed values are null." : "All values in this analysis scope are null.");
       }
       if(scope.estimate())
       {
@@ -170,16 +176,16 @@ public class ColumnProfiler
 
 
    /*******************************************************************************
-    ** Numeric moments, twenty interior bins, exterior bins and Tukey outliers.
+    ** Numeric moments, nice interior bins, exterior bins and Tukey outliers.
     *******************************************************************************/
-   private void numeric(ColumnProfile result, QQueryFilter filter, QQueryFilter drillFilter, long rows) throws QException
+   private void numeric(ColumnProfile result, QQueryFilter filter, QQueryFilter drillFilter, long rows, QFieldMetaData metadata) throws QException
    {
       String table = result.getTableName();
       String field = result.getFieldName();
       AnalysisBackend.NumericSummary summary = backend.numericSummary(table, filter, field,
          List.of("0.01", "0.05", "0.25", "0.50", "0.75", "0.95", "0.99").stream().map(BigDecimal::new).toList());
       NumericProfile numeric = new NumericProfile();
-      summary.metrics().forEach((key, value) -> numeric.getMetrics().add(ProfileSupport.metric(key, value, ValueType.DECIMAL)));
+      summary.metrics().forEach((key, value) -> numeric.getMetrics().add(AnalysisFormatting.numericMetric(metadata, key, value)));
       for(AnalysisBackend.GroupCount count : summary.counts())
       {
          numeric.getMetrics().add(ProfileSupport.count(count.label(), count.count(), table, drillFilter, count.condition()));
@@ -211,7 +217,7 @@ public class ColumnProfiler
          LocalDate last = ProfileSupport.day(extrema.get("max"), zone);
          AnalysisBackend.DateUnit unit = autoBucket(first, last);
          dates.withUnit(unit.name());
-         dates.getMetrics().add(ProfileSupport.metric("range", ChronoUnit.DAYS.between(first, last), ValueType.DURATION));
+         dates.getMetrics().add(ProfileSupport.metric("range", ChronoUnit.DAYS.between(first, last), ValueType.DURATION).withFormatted(AnalysisFormatting.duration(first, last)));
          List<ValueCount> buckets = ProfileSupport.values(table, drillFilter, null, backend.dateBuckets(table, filter, field, unit, zone), rows);
          dates.withBuckets(buckets).withGaps(buckets.stream().filter(b -> b.getCount() == 0).toList());
          if(type == QFieldType.DATE_TIME)

@@ -38,7 +38,7 @@ public interface AnalysisBackend
     *******************************************************************************/
    enum DateUnit
    {
-      DAY, WEEK, MONTH, YEAR, DAY_OF_WEEK, HOUR_OF_DAY
+      DAY, WEEK, MONTH, QUARTER, YEAR, HOUR, DAY_OF_WEEK, HOUR_OF_DAY
    }
 
 
@@ -121,6 +121,15 @@ public interface AnalysisBackend
 
 
    /*******************************************************************************
+    ** Actual inspected non-null values, independent of estimated population counts.
+    *******************************************************************************/
+   record PatternSummary(List<GroupCount> groups, long values, boolean truncated)
+   {
+   }
+
+
+
+   /*******************************************************************************
     ** Filtered count; a native estimate scales conditional counts to its population.
     *******************************************************************************/
    long count(String table, QQueryFilter filter) throws QException;
@@ -168,7 +177,7 @@ public interface AnalysisBackend
    /*******************************************************************************
     ** Top shapes over a bounded primary-key prefix.
     *******************************************************************************/
-   List<GroupCount> patterns(String table, QQueryFilter filter, String field, int sampleRows) throws QException;
+   PatternSummary patterns(String table, QQueryFilter filter, String field, int sampleRows) throws QException;
 
    /*******************************************************************************
     ** Top groups with count greater than one.

@@ -101,7 +101,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
    public Scope scope(String table, QQueryFilter filter, boolean exact) throws QException
    {
       long total = count(table, filter);
-      boolean estimate = !exact && total > config.getSampleThresholdRows();
+      boolean estimate = !exact && total > config.getSampleThresholdRows() && total > Math.min(config.getSampleRows(), config.getMaxRows());
       estimating = estimate;
       int limit = estimate ? Math.min(config.getSampleRows(), config.getMaxRows()) : config.getMaxRows();
       QQueryFilter scoped = DrillFilters.copy(filter);
@@ -455,17 +455,21 @@ public class StandInAnalysisBackend implements AnalysisBackend
       {
          return (result);
       }
+      NiceBins nice = NiceBins.covering(low, high);
+      low = nice.low();
+      high = nice.high();
+      bins = nice.count();
       List<BigDecimal> values = rows(table, filter, Set.of(field), config.getMaxRows()).stream().map(r -> r.getValue(field))
          .filter(Objects::nonNull).map(v -> new BigDecimal(v.toString())).toList();
-      result.add(bucket(table, filter, "Below " + low, numericRange(table, field, values, null, low, false)));
+      result.add(bucket(table, filter, AnalysisFormatting.interval(field(table, field), null, low), numericRange(table, field, values, null, low, false)));
       BigDecimal width = high.subtract(low).divide(BigDecimal.valueOf(bins), MATH);
       for(int i = 0; i < bins; i++)
       {
          BigDecimal start = low.add(width.multiply(BigDecimal.valueOf(i)));
          BigDecimal end = i == bins - 1 ? high : low.add(width.multiply(BigDecimal.valueOf(i + 1)));
-         result.add(bucket(table, filter, "[" + start + ", " + end + (i == bins - 1 ? "]" : ")"), numericRange(table, field, values, start, end, i == bins - 1)));
+         result.add(bucket(table, filter, AnalysisFormatting.interval(field(table, field), start, end), numericRange(table, field, values, start, end, i == bins - 1)));
       }
-      result.add(bucket(table, filter, "Above " + high, DrillFilters.and(DrillFilters.condition(field, QCriteriaOperator.IS_NOT_BLANK), DrillFilters.condition(field, QCriteriaOperator.GREATER_THAN, high))));
+      result.add(bucket(table, filter, AnalysisFormatting.interval(field(table, field), high, null), DrillFilters.and(DrillFilters.condition(field, QCriteriaOperator.IS_NOT_BLANK), DrillFilters.condition(field, QCriteriaOperator.GREATER_THAN, high))));
       return (result);
    }
 
@@ -491,7 +495,26 @@ public class StandInAnalysisBackend implements AnalysisBackend
       if(unit == DateUnit.DAY_OF_WEEK || unit == DateUnit.HOUR_OF_DAY)
       {
          return (mappedGroups(table, filter, field, records, v -> unit == DateUnit.DAY_OF_WEEK ? day(v, zone).getDayOfWeek().getValue()
-            : ((Instant) v).atZone(zone).getHour(), 24));
+            : ((Instant) v).atZone(zone).getHour(), 24).stream()
+            .map(g -> new GroupCount(g.value(), AnalysisFormatting.dateBucket(g.value(), unit, zone), g.count(), g.condition(), g.share())).toList());
+      }
+      if(unit == DateUnit.HOUR)
+      {
+         List<Instant> instants = records.stream().map(r -> (Instant) r.getValue(field)).filter(Objects::nonNull).sorted().toList();
+         List<GroupCount> hours = new ArrayList<>();
+         if(!instants.isEmpty())
+         {
+            Instant start = instants.getFirst().atZone(zone).truncatedTo(java.time.temporal.ChronoUnit.HOURS).toInstant();
+            while(!start.isAfter(instants.getLast()))
+            {
+               Instant end = start.plus(1, java.time.temporal.ChronoUnit.HOURS);
+               QQueryFilter condition = DrillFilters.and(DrillFilters.condition(field, QCriteriaOperator.GREATER_THAN_OR_EQUALS, start),
+                  DrillFilters.condition(field, QCriteriaOperator.LESS_THAN, end));
+               hours.add(new GroupCount(start, AnalysisFormatting.dateBucket(start, unit, zone), count(table, DrillFilters.and(filter, condition)), condition, countShare()));
+               start = end;
+            }
+         }
+         return (hours);
       }
       List<LocalDate> dates = records.stream().map(r -> r.getValue(field)).filter(Objects::nonNull).map(v -> day(v, zone)).sorted().toList();
       List<GroupCount> result = new ArrayList<>();
@@ -504,7 +527,8 @@ public class StandInAnalysisBackend implements AnalysisBackend
       while(!start.isAfter(last))
       {
          LocalDate end = next(start, unit);
-         result.add(bucket(table, filter, start + " / " + end, DrillFilters.dateRange(field, start, end, field(table, field).getType() == QFieldType.DATE_TIME, zone)));
+         QQueryFilter condition = DrillFilters.dateRange(field, start, end, field(table, field).getType() == QFieldType.DATE_TIME, zone);
+         result.add(new GroupCount(start, AnalysisFormatting.dateBucket(start, unit, zone), count(table, DrillFilters.and(filter, condition)), condition, countShare()));
          start = end;
       }
       return (result);
@@ -531,6 +555,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
       {
          case WEEK -> date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
          case MONTH -> date.withDayOfMonth(1);
+         case QUARTER -> date.withMonth((date.getMonthValue() - 1) / 3 * 3 + 1).withDayOfMonth(1);
          case YEAR -> date.withDayOfYear(1);
          default -> date;
       });
@@ -547,6 +572,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
       {
          case WEEK -> date.plusWeeks(1);
          case MONTH -> date.plusMonths(1);
+         case QUARTER -> date.plusMonths(3);
          case YEAR -> date.plusYears(1);
          default -> date.plusDays(1);
       });
@@ -605,12 +631,14 @@ public class StandInAnalysisBackend implements AnalysisBackend
     ** Shapes use a primary-key prefix of at most the requested sample size.
     *******************************************************************************/
    @Override
-   public List<GroupCount> patterns(String table, QQueryFilter filter, String field, int sampleRows) throws QException
+   public PatternSummary patterns(String table, QQueryFilter filter, String field, int sampleRows) throws QException
    {
-      List<QRecord> records = rows(table, filter, Set.of(field, primaryKey(table)), sampleRows);
+      List<QRecord> records = rows(table, DrillFilters.and(filter, DrillFilters.nonNull(field, true)), Set.of(field, primaryKey(table)), sampleRows + 1);
+      boolean truncated = records.size() > sampleRows;
+      records = records.subList(0, Math.min(records.size(), sampleRows));
       QQueryFilter sampled = records.isEmpty() ? DrillFilters.in(primaryKey(table), List.of())
          : DrillFilters.condition(primaryKey(table), QCriteriaOperator.LESS_THAN_OR_EQUALS, records.getLast().getValue(primaryKey(table)));
-      return (mappedGroups(table, estimating ? filter : DrillFilters.and(filter, sampled), field, records, v -> shape(v.toString()), 10));
+      return (new PatternSummary(mappedGroups(table, estimating ? filter : DrillFilters.and(filter, sampled), field, records, v -> shape(v.toString()), 10), records.size(), truncated));
    }
 
 

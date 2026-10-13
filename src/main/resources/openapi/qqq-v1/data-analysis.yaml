@@ -511,7 +511,7 @@ components:
           nullable: true
           type: "string"
         completeness:
-          description: "Completeness."
+          description: "Non-empty share as a 0..1 ratio rounded to six decimals."
           nullable: true
           type: "number"
         distinct:
@@ -519,7 +519,7 @@ components:
           nullable: true
           type: "integer"
         uniqueness:
-          description: "Uniqueness."
+          description: "Distinct share as a 0..1 ratio rounded to six decimals."
           nullable: true
           type: "number"
         constant:
@@ -567,11 +567,13 @@ components:
           nullable: true
           type: "string"
         label:
-          description: "Label."
+          description: "Plain-English metric label, ready to display."
           nullable: true
           type: "string"
         value:
-          description: "Value."
+          description: "Raw numeric or temporal value. PERCENT is a 0..1 ratio rounded\
+            \ to six decimals; DECIMAL field statistics have ten significant digits.\
+            \ DATE_TIME is an ISO instant."
           nullable: true
           oneOf:
           - type: "string"
@@ -596,7 +598,8 @@ components:
             \ remains exact."
           type: "boolean"
         formatted:
-          description: "Formatted."
+          description: "Display-ready value, including grouping, field display formats,\
+            \ percent signs and session-zone dates; null when absent or suppressed."
           nullable: true
           type: "string"
         drill:
@@ -872,7 +875,7 @@ components:
           nullable: true
           type: "integer"
         share:
-          description: "Share."
+          description: "Share as a 0..1 ratio rounded to six decimals."
           nullable: true
           type: "number"
         drill:

@@ -110,7 +110,7 @@ class CoreAnalysisBackendTest extends EngineFixture
    }
 
    /*******************************************************************************
-    ** Zero and capped percentages never divide by zero or restrict the row drill.
+    ** Empty samples keep the population drill; inspecting every row is exact.
     *******************************************************************************/
    @Test
    void samplingBoundaries() throws Exception
@@ -123,7 +123,8 @@ class CoreAnalysisBackendTest extends EngineFixture
       config.withDefaultSampleRows(100);
       service.getConfigResolver().invalidate();
       var scope = service.backend("orders").scope("orders", null, false);
-      assertThat(scope.samplePercent()).isEqualByComparingTo("100");
+      assertThat(scope.samplePercent()).isNull();
+      assertThat(scope.estimate()).isFalse();
       assertThat(scope.rowsScanned()).isEqualTo(12);
    }
 

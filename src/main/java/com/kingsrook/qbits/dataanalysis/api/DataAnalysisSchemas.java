@@ -603,13 +603,13 @@ public class DataAnalysisSchemas
       @OpenAPIDescription("Type.")
       public String type;
 
-      @OpenAPIDescription("Completeness.")
+      @OpenAPIDescription("Non-empty share as a 0..1 ratio rounded to six decimals.")
       public BigDecimal completeness;
 
       @OpenAPIDescription("Distinct.")
       public Long distinct;
 
-      @OpenAPIDescription("Uniqueness.")
+      @OpenAPIDescription("Distinct share as a 0..1 ratio rounded to six decimals.")
       public BigDecimal uniqueness;
 
       @OpenAPIDescription("Constant.")
@@ -634,9 +634,9 @@ public class DataAnalysisSchemas
          properties.put("field", new Schema().withType(Type.STRING).withDescription("Field.").withNullable(true));
          properties.put("label", new Schema().withType(Type.STRING).withDescription("Label.").withNullable(true));
          properties.put("type", new Schema().withType(Type.STRING).withDescription("Type.").withNullable(true));
-         properties.put("completeness", new Schema().withType(Type.NUMBER).withDescription("Completeness.").withNullable(true));
+         properties.put("completeness", new Schema().withType(Type.NUMBER).withDescription("Non-empty share as a 0..1 ratio rounded to six decimals.").withNullable(true));
          properties.put("distinct", new Schema().withType(Type.INTEGER).withDescription("Distinct.").withNullable(true));
-         properties.put("uniqueness", new Schema().withType(Type.NUMBER).withDescription("Uniqueness.").withNullable(true));
+         properties.put("uniqueness", new Schema().withType(Type.NUMBER).withDescription("Distinct share as a 0..1 ratio rounded to six decimals.").withNullable(true));
          properties.put("constant", new Schema().withType(Type.BOOLEAN).withDescription("Constant.").withNullable(true));
          properties.put("empty", new Schema().withType(Type.BOOLEAN).withDescription("Empty.").withNullable(true));
          properties.put("nulls", ref("DataAnalysisMetricV1").withDescription("Nulls.").withNullable(true));
@@ -654,16 +654,16 @@ public class DataAnalysisSchemas
       public Boolean estimate;
       public String key;
 
-      @OpenAPIDescription("Label.")
+      @OpenAPIDescription("Plain-English metric label, ready to display.")
       public String label;
 
-      @OpenAPIDescription("Value.")
+      @OpenAPIDescription("Raw numeric or temporal value. PERCENT is a 0..1 ratio rounded to six decimals; DECIMAL field statistics have ten significant digits. DATE_TIME is an ISO instant.")
       public Serializable value;
 
       @OpenAPIDescription("Value type.")
       public ValueType valueType;
 
-      @OpenAPIDescription("Formatted.")
+      @OpenAPIDescription("Display-ready value, including grouping, field display formats, percent signs and session-zone dates; null when absent or suppressed.")
       public String formatted;
 
       @OpenAPIDescription("Open the matching records using this table and QueryFilter; null when suppressed.")
@@ -683,11 +683,11 @@ public class DataAnalysisSchemas
       {
          Map<String, Schema> properties = new LinkedHashMap<>();
          properties.put("key", new Schema().withType(Type.STRING).withDescription("Key.").withNullable(true));
-         properties.put("label", new Schema().withType(Type.STRING).withDescription("Label.").withNullable(true));
-         properties.put("value", new Schema().withOneOf(List.of(new Schema().withType(Type.STRING), new Schema().withType(Type.NUMBER), new Schema().withType(Type.BOOLEAN), new Schema().withType(Type.OBJECT).withNullable(true))).withDescription("Value.").withNullable(true));
+         properties.put("label", new Schema().withType(Type.STRING).withDescription("Plain-English metric label, ready to display.").withNullable(true));
+         properties.put("value", new Schema().withOneOf(List.of(new Schema().withType(Type.STRING), new Schema().withType(Type.NUMBER), new Schema().withType(Type.BOOLEAN), new Schema().withType(Type.OBJECT).withNullable(true))).withDescription("Raw numeric or temporal value. PERCENT is a 0..1 ratio rounded to six decimals; DECIMAL field statistics have ten significant digits. DATE_TIME is an ISO instant.").withNullable(true));
          properties.put("valueType", new Schema().withType(Type.STRING).withEnumValues(java.util.Arrays.stream(ValueType.values()).map(Enum::name).toList()).withDescription("Value type.").withNullable(true));
          properties.put("estimate", new Schema().withType(Type.BOOLEAN).withDescription("Whether this metric is estimated; the population rows metric remains exact."));
-         properties.put("formatted", new Schema().withType(Type.STRING).withDescription("Formatted.").withNullable(true));
+         properties.put("formatted", new Schema().withType(Type.STRING).withDescription("Display-ready value, including grouping, field display formats, percent signs and session-zone dates; null when absent or suppressed.").withNullable(true));
          properties.put("drill", ref("DataAnalysisDrillV1").withDescription("Open the matching records using this table and QueryFilter; null when suppressed.").withNullable(true));
          properties.put("suppressed", new Schema().withType(Type.BOOLEAN).withDescription("Suppressed.").withNullable(true));
          properties.put("suppressedReason", new Schema().withType(Type.STRING).withDescription("Suppressed reason.").withNullable(true));
@@ -961,7 +961,7 @@ public class DataAnalysisSchemas
       @OpenAPIDescription("Count.")
       public Long count;
 
-      @OpenAPIDescription("Share.")
+      @OpenAPIDescription("Share as a 0..1 ratio rounded to six decimals.")
       public BigDecimal share;
 
       @OpenAPIDescription("Open the matching records using this table and QueryFilter; null when suppressed.")
@@ -977,7 +977,7 @@ public class DataAnalysisSchemas
          properties.put("value", new Schema().withOneOf(List.of(new Schema().withType(Type.STRING), new Schema().withType(Type.NUMBER), new Schema().withType(Type.BOOLEAN), new Schema().withType(Type.OBJECT).withNullable(true))).withDescription("Value.").withNullable(true));
          properties.put("label", new Schema().withType(Type.STRING).withDescription("Label.").withNullable(true));
          properties.put("count", new Schema().withType(Type.INTEGER).withDescription("Count.").withNullable(true));
-         properties.put("share", new Schema().withType(Type.NUMBER).withDescription("Share.").withNullable(true));
+         properties.put("share", new Schema().withType(Type.NUMBER).withDescription("Share as a 0..1 ratio rounded to six decimals.").withNullable(true));
          properties.put("drill", ref("DataAnalysisDrillV1").withDescription("Open the matching records using this table and QueryFilter; null when suppressed.").withNullable(true));
          return (new Schema().withType(Type.OBJECT).withNullable(true).withProperties(properties));
       }

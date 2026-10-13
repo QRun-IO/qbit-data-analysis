@@ -70,7 +70,7 @@ public class TableProfiler
          String name = field.getName();
          AnalysisBackend.FieldCounts c = counts.get(name);
          result.getFields().add(new FieldSummary().withField(name).withLabel(field.getLabel()).withType(field.getType().name())
-            .withCompleteness(c.completeness()).withDistinct(c.distinct()).withUniqueness(c.uniqueness())
+            .withCompleteness(AnalysisFormatting.ratio(c.completeness())).withDistinct(c.distinct()).withUniqueness(AnalysisFormatting.ratio(c.uniqueness()))
             .withConstant(c.constant()).withEmpty(c.blanks() == rows)
             .withNulls(ProfileSupport.count("nulls", c.nulls(), table, drillFilter, DrillFilters.nulls(name, field.getType().isStringLike())))
             .withBlanks(ProfileSupport.count("blanks", c.blanks(), table, drillFilter, c.blankFilter())));

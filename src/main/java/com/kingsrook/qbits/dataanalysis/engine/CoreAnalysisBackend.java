@@ -85,7 +85,7 @@ public class CoreAnalysisBackend extends StandInAnalysisBackend
    {
       samplePercent = null;
       long total = super.count(table, filter);
-      if(exact || total <= config.getSampleThresholdRows() || !capabilities(table).contains(AggregateCapability.SAMPLING))
+      if(exact || total <= config.getSampleThresholdRows() || total <= config.getSampleRows() || !capabilities(table).contains(AggregateCapability.SAMPLING))
       {
          return (super.scope(table, filter, exact));
       }
@@ -375,21 +375,25 @@ public class CoreAnalysisBackend extends StandInAnalysisBackend
       {
          return (super.numericHistogram(table, filter, field, low, high, bins));
       }
+      NiceBins nice = NiceBins.covering(low, high);
+      low = nice.low();
+      high = nice.high();
+      bins = nice.count();
       GroupBy group = new GroupBy(field(table, field)).withBucket(new NumericBucket(low, high, bins));
       Map<Serializable, Long> counts = bucketCounts(table, filter, group);
       List<BigDecimal> values = !estimating && isMemory(table) ? rows(table, filter, Set.of(field), config.getMaxRows()).stream().map(r -> r.getValue(field))
          .filter(Objects::nonNull).map(v -> new BigDecimal(v.toString())).toList() : List.of();
       List<GroupCount> result = new ArrayList<>();
-      result.add(new GroupCount("Below " + low, "Below " + low, aggregateCount(counts.getOrDefault(0, 0L)), numericRange(table, field, values, null, low, false), aggregateShare(counts.getOrDefault(0, 0L))));
+      result.add(new GroupCount(AnalysisFormatting.interval(field(table, field), null, low), AnalysisFormatting.interval(field(table, field), null, low), aggregateCount(counts.getOrDefault(0, 0L)), numericRange(table, field, values, null, low, false), aggregateShare(counts.getOrDefault(0, 0L))));
       BigDecimal width = high.subtract(low).divide(BigDecimal.valueOf(bins), MathContext.DECIMAL128);
       for(int i = 0; i < bins; i++)
       {
          BigDecimal start = low.add(width.multiply(BigDecimal.valueOf(i)));
          BigDecimal end = i == bins - 1 ? high : low.add(width.multiply(BigDecimal.valueOf(i + 1)));
-         String label = "[" + start + ", " + end + (i == bins - 1 ? "]" : ")");
+         String label = AnalysisFormatting.interval(field(table, field), start, end);
          result.add(new GroupCount(label, label, aggregateCount(counts.getOrDefault(i + 1, 0L)), numericRange(table, field, values, start, end, i == bins - 1), aggregateShare(counts.getOrDefault(i + 1, 0L))));
       }
-      result.add(new GroupCount("Above " + high, "Above " + high, aggregateCount(counts.getOrDefault(bins + 1, 0L)),
+      result.add(new GroupCount(AnalysisFormatting.interval(field(table, field), high, null), AnalysisFormatting.interval(field(table, field), high, null), aggregateCount(counts.getOrDefault(bins + 1, 0L)),
          DrillFilters.and(DrillFilters.condition(field, QCriteriaOperator.IS_NOT_BLANK), DrillFilters.condition(field, QCriteriaOperator.GREATER_THAN, high)), aggregateShare(counts.getOrDefault(bins + 1, 0L))));
       return (result);
    }
@@ -400,6 +404,10 @@ public class CoreAnalysisBackend extends StandInAnalysisBackend
    @Override
    public List<GroupCount> dateBuckets(String table, QQueryFilter filter, String field, DateUnit unit, ZoneId zone) throws QException
    {
+      if(unit == DateUnit.HOUR || unit == DateUnit.QUARTER)
+      {
+         return (super.dateBuckets(table, filter, field, unit, zone));
+      }
       GroupBy group = new GroupBy(field(table, field)).withBucket(new DateBucket(DateBucketUnit.valueOf(unit.name())));
       AggregateInput probe = new AggregateInput(table).withGroupBy(group);
       if(!new QBackendModuleDispatcher().getQBackendModule(probe.getBackend()).getAggregateInterface().getSupportedCapabilities(probe).contains(AggregateCapability.DATE_BUCKET))
@@ -423,8 +431,8 @@ public class CoreAnalysisBackend extends StandInAnalysisBackend
          while(!start.isAfter(dates.getLast()))
          {
             LocalDate end = next(start, unit);
-            String label = start + " / " + end;
-            result.add(new GroupCount(label, label, aggregateCount(counts.getOrDefault(start, 0L)),
+            String label = AnalysisFormatting.dateBucket(start, unit, zone);
+            result.add(new GroupCount(start, label, aggregateCount(counts.getOrDefault(start, 0L)),
                DrillFilters.dateRange(field, start, end, field(table, field).getType() == QFieldType.DATE_TIME, zone), aggregateShare(counts.getOrDefault(start, 0L))));
             start = end;
          }
