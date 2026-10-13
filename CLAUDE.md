@@ -1,17 +1,48 @@
-# qbit-template-extension
+# CLAUDE.md
 
-GitHub template repository for scaffolding QQQ "Extension QBits" (infrastructure-level plugins: table customizers, auth, audit, action wrappers). Not a shipping library — consumers click "Use this template" and rename the `com.kingsrook.qbits.example` package.
+This file provides guidance to Claude Code when working with code in this repository.
 
-## QQQ 4.0 baseline — 2026-09-24
+## Project Overview
 
-The historical review below predates the 4.0 migration. This template targets Java 21 and the public QQQ 4.0.0 release from Maven Central. The corrected APIs, license references and actual template commands are in README.md and docs/00-getting-started.md. Preserve the documented multi-instance and scaffold limitations.
+**QBit Data Analysis**: statistical analysis and data dives on any table, filter or saved view. Design: [QRun-IO/qqq#1137](https://github.com/QRun-IO/qqq/pull/1137), `docs/DATA-ANALYSIS.md` in QQQ. Repository phase: metadata, permissions and Analyses home summary. Computation and UI phases a-f are planned.
 
-## Knowledge base
+## Build Commands
 
-Reviewed dossiers for this repo and the wider QQQ platform live in the second-brain vault:
+```bash
+./mvnw compile
+./mvnw test
+./mvnw verify  # Checkstyle, tests, JaCoCo: 70% instructions, 90% classes
+```
 
-- Hub / entry point: `R:/Git.Local/KofTwentyTwo/second-brain/knowledge/qqq/qqq-hub.md`
-- This repo's dossier: `R:/Git.Local/KofTwentyTwo/second-brain/knowledge/qqq/repos/qbit-template-extension.md`
-- QBit mechanics refresher: `R:/Git.Local/KofTwentyTwo/second-brain/knowledge/qqq/architecture/metadata-model.md`
+Always use the wrapper (Maven 3.9.11); Maven 3.10 cannot read the parent POM.
 
-Reviewed at commit `e7d4b4d672cc` (branch `main`, 2026-05-21). Known drift as of that review: no `qbit-build-parent` parent pom (org convention), qqq pinned at 0.35.0 on main (0.40.0-SNAPSHOT on develop), README still claims AGPL-3.0 while LICENSE/NOTICE are Apache-2.0, and README references `scripts/customize_template.py` / `actions/ExampleActionCustomizer.java` which do not exist. See the dossier's "Maturity & risks" and "v4.0 impact" sections before modifying the scaffold.
+## Architecture
+
+Entry point: `DataAnalysisQBitProducer implements QBitMetaDataProducer<DataAnalysisQBitConfig>` in `com.kingsrook.qbits.dataanalysis`. Component producers are scanned only in `metadata`. Tables live in `model`, widgets in `app`, permission helpers in `permissions`.
+
+## Invariants
+
+- Queries use the current user's session and enforced permissions.
+- Saved analyses remain owner-locked; the shared flag does not broaden READ yet. See README Security.
+- Hosts populate `data_analysis_user` with the session user id; only administrators get the `data_analysis.admin` all-access security key.
+- Real counts only. Schedules and stars are children of saved analyses. No processes in navigation.
+
+## Naming
+
+- Tables: `data_analysis_<name>`; SQL names equal QQQ table names. Table PVS use the table name.
+- Permissions: `data_analysis.saved.*`, `data_analysis.watch.*`, `data_analysis.settings.*`, `data_analysis.run.*` (standard rules, no custom checker), `data_analysis.admin` (lock all-access key), plus `<effective table permission base>.analyze` per analyzed table.
+- Data lives in visible standard QQQ tables with permissions and record locks.
+
+## Code Style
+
+- Copy the Apache header from existing Java files; 3-space indent, Allman braces, `return (x);`.
+- Flower-box Javadoc on every class and method; fluent `withX()` setters.
+- Wrapper types in config and entities; JUnit 5 and AssertJ tests.
+
+## Dependencies
+
+Java 21; parent `com.kingsrook:qbit-build-parent:2.0.0`. Default-active `qqq-snapshot` imports QQQ `4.1.0-RC.5` ahead of the parent's 4.0.0 BOM (ADR-0007); remove activation when the parent moves to 4.1. Middleware Javalin is optional. RDBMS, H2, PostgreSQL driver and Testcontainers are test-only for later pushdown tests. Later phases need core aggregate extensions and the UI API extension point (#1128, RC.6).
+
+## Release
+
+CircleCI qqq-orb 0.6.8: `develop` publishes SNAPSHOTs, `release/*` publishes RCs (orb version bumps), `vX.Y.Z` publishes releases. No manual publishing.
