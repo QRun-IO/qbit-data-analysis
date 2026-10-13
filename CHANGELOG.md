@@ -6,7 +6,13 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 
 ### Added
 
-- `data-analysis` UI API extension 1.0.0: seven session-bound profile, capability, distinct-value, duplicate and run endpoints, typed schemas and a checked OpenAPI fragment.
+- Phase c pivot backend and `POST /qbit/data-analysis/tables/{table}/pivot`, extension version 1.1.0, typed schemas and regenerated OpenAPI fragment.
+- Row/column dimensions, calendar/numeric buckets, seven measure operators, sparse cells, exact Other recomputation, totals, privacy suppression and count-equivalent drills.
+- Exposed-join dimensions and measures with READ/FULL checks; filter-only drills for to-one paths and explicit null-drill warnings for to-many paths whose joined-row counts can exceed record counts.
+- Configurable field-access resolver, cached reflective core tier bridge with legacy fallback, FULL-only capabilities/selections/labels, generated-drill protection and field-access cache fingerprints.
+- Shared memory/H2/PostgreSQL pivot contracts, HTTP drills and errors, reflective resolver/fallback and tier-change cache tests.
+
+- Session-bound profile, capability, distinct-value, duplicate and run endpoints, typed schemas and a checked OpenAPI fragment (introduced in extension 1.0.0).
 - Core table-feature permission registration and capability-directed aggregate pushdown, with native sampling and portable streamed fallbacks.
 - HTTP authorization, drill-to-core-count round trips, async polling, served OpenAPI and assistant discovery tests; H2 streamed and native-compatibility contract variants.
 

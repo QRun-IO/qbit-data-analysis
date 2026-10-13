@@ -106,6 +106,14 @@ public class DataAnalysisSchemas
       result.put("DataAnalysisLimitsV1", new DataAnalysisLimitsV1().toSchema());
       result.put("DataAnalysisStartRunRequestV1", new DataAnalysisStartRunRequestV1().toSchema());
       result.put("DataAnalysisRunStartedV1", new DataAnalysisRunStartedV1().toSchema());
+      result.put("DataAnalysisPivotRequestV1", new DataAnalysisPivotRequestV1().toSchema());
+      result.put("DataAnalysisPivotDimensionV1", new DataAnalysisPivotDimensionV1().toSchema());
+      result.put("DataAnalysisPivotNumericBinsV1", new DataAnalysisPivotNumericBinsV1().toSchema());
+      result.put("DataAnalysisPivotMeasureV1", new DataAnalysisPivotMeasureV1().toSchema());
+      result.put("DataAnalysisPivotHeaderV1", new DataAnalysisPivotHeaderV1().toSchema());
+      result.put("DataAnalysisPivotMeasureInfoV1", new DataAnalysisPivotMeasureInfoV1().toSchema());
+      result.put("DataAnalysisPivotCellV1", new DataAnalysisPivotCellV1().toSchema());
+      result.put("DataAnalysisPivotV1", new DataAnalysisPivotV1().toSchema());
       return (result);
    }
 
@@ -1146,4 +1154,281 @@ public class DataAnalysisSchemas
          return (new Schema().withType(Type.OBJECT).withNullable(true).withProperties(properties));
       }
    }
+
+   /*******************************************************************************
+    ** Nested arrays share the same explicit schema construction.
+    *******************************************************************************/
+   private static Schema array(Schema items)
+   {
+      return (new Schema().withType(Type.ARRAY).withItems(items));
+   }
+
+   /*******************************************************************************
+    ** PivotRequest version 1 transport contract.
+    *******************************************************************************/
+   public static class DataAnalysisPivotRequestV1 implements ToSchema
+   {
+      @OpenAPIDescription("User query filter, passed through for core enforcement.")
+      public QQueryFilter filter;
+
+      @OpenAPIDescription("One to three row dimensions.")
+      public List<DataAnalysisPivotDimensionV1> rows;
+
+      @OpenAPIDescription("Zero to two column dimensions; defaults to empty.")
+      public List<DataAnalysisPivotDimensionV1> columns;
+
+      @OpenAPIDescription("One to six measures.")
+      public List<DataAnalysisPivotMeasureV1> values;
+
+      @OpenAPIDescription("Include row, column and grand totals; defaults to true.")
+      public Boolean showTotals;
+
+      @OpenAPIDescription("Kept groups per dimension; default 50, maximum 200.")
+      public Integer limitGroups;
+
+      /*******************************************************************************
+       ** Explicit references preserve the standalone extension contract.
+       *******************************************************************************/
+      @Override
+      public Schema toSchema()
+      {
+         Map<String, Schema> properties = new LinkedHashMap<>();
+         properties.put("filter", ref("QueryFilter").withDescription("User query filter, passed through for core enforcement."));
+         properties.put("rows", array(ref("DataAnalysisPivotDimensionV1")).withDescription("One to three row dimensions."));
+         properties.put("columns", array(ref("DataAnalysisPivotDimensionV1")).withDescription("Zero to two column dimensions; defaults to empty."));
+         properties.put("values", array(ref("DataAnalysisPivotMeasureV1")).withDescription("One to six measures."));
+         properties.put("showTotals", new Schema().withType(Type.BOOLEAN).withDescription("Include row, column and grand totals; defaults to true."));
+         properties.put("limitGroups", new Schema().withType(Type.INTEGER).withDescription("Kept groups per dimension; default 50, maximum 200."));
+         return (new RequiredSchema(List.of("rows", "values")).withType(Type.OBJECT).withProperties(properties));
+      }
+   }
+
+   /*******************************************************************************
+    ** PivotDimension version 1 transport contract.
+    *******************************************************************************/
+   public static class DataAnalysisPivotDimensionV1 implements ToSchema
+   {
+      @OpenAPIDescription("FULL field name, optionally joinTable.field through an exposed join.")
+      public String field;
+
+      @OpenAPIDescription("Optional calendar or cyclic bucket in the session timezone.")
+      public String dateBucket;
+
+      @OpenAPIDescription("Optional equal-width numeric bins; mutually exclusive with dateBucket.")
+      public DataAnalysisPivotNumericBinsV1 numericBins;
+
+      /*******************************************************************************
+       ** Explicit references preserve the standalone extension contract.
+       *******************************************************************************/
+      @Override
+      public Schema toSchema()
+      {
+         Map<String, Schema> properties = new LinkedHashMap<>();
+         properties.put("field", new Schema().withType(Type.STRING).withDescription("FULL field name, optionally joinTable.field through an exposed join."));
+         properties.put("dateBucket", new Schema().withType(Type.STRING).withEnumValues(List.of("YEAR", "QUARTER", "MONTH", "WEEK", "DAY", "HOUR", "DAY_OF_WEEK", "HOUR_OF_DAY")).withDescription("Optional calendar or cyclic bucket in the session timezone."));
+         properties.put("numericBins", ref("DataAnalysisPivotNumericBinsV1").withDescription("Optional equal-width numeric bins; mutually exclusive with dateBucket."));
+         return (new RequiredSchema(List.of("field")).withType(Type.OBJECT).withProperties(properties));
+      }
+   }
+
+   /*******************************************************************************
+    ** PivotNumericBins version 1 transport contract.
+    *******************************************************************************/
+   public static class DataAnalysisPivotNumericBinsV1 implements ToSchema
+   {
+      @OpenAPIDescription("Number of bins, 1–200; defaults to 20.")
+      public Integer count;
+
+      @OpenAPIDescription("Optional explicit lower bound; otherwise a nice enclosing edge.")
+      public BigDecimal min;
+
+      @OpenAPIDescription("Optional explicit upper bound; final interior bin includes this value.")
+      public BigDecimal max;
+
+      /*******************************************************************************
+       ** Explicit references preserve the standalone extension contract.
+       *******************************************************************************/
+      @Override
+      public Schema toSchema()
+      {
+         Map<String, Schema> properties = new LinkedHashMap<>();
+         properties.put("count", new Schema().withType(Type.INTEGER).withDescription("Number of bins, 1–200; defaults to 20."));
+         properties.put("min", new Schema().withType(Type.NUMBER).withDescription("Optional explicit lower bound; otherwise a nice enclosing edge."));
+         properties.put("max", new Schema().withType(Type.NUMBER).withDescription("Optional explicit upper bound; final interior bin includes this value."));
+         return (new Schema().withType(Type.OBJECT).withProperties(properties));
+      }
+   }
+
+   /*******************************************************************************
+    ** PivotMeasure version 1 transport contract.
+    *******************************************************************************/
+   public static class DataAnalysisPivotMeasureV1 implements ToSchema
+   {
+      @OpenAPIDescription("Aggregate operator. COUNT counts records, including null values.")
+      public String operator;
+
+      @OpenAPIDescription("FULL field to aggregate; optional for COUNT.")
+      public String field;
+
+      @OpenAPIDescription("PERCENTILE only: percentile_cont fraction from 0 to 1.")
+      public BigDecimal percentile;
+
+      /*******************************************************************************
+       ** Explicit references preserve the standalone extension contract.
+       *******************************************************************************/
+      @Override
+      public Schema toSchema()
+      {
+         Map<String, Schema> properties = new LinkedHashMap<>();
+         properties.put("operator", new Schema().withType(Type.STRING).withEnumValues(List.of("COUNT", "SUM", "AVG", "MIN", "MAX", "COUNT_DISTINCT", "PERCENTILE")).withDescription("Aggregate operator. COUNT counts records, including null values."));
+         properties.put("field", new Schema().withType(Type.STRING).withDescription("FULL field to aggregate; optional for COUNT."));
+         properties.put("percentile", new Schema().withType(Type.NUMBER).withDescription("PERCENTILE only: percentile_cont fraction from 0 to 1."));
+         return (new RequiredSchema(List.of("operator")).withType(Type.OBJECT).withProperties(properties));
+      }
+   }
+
+   /*******************************************************************************
+    ** PivotHeader version 1 transport contract.
+    *******************************************************************************/
+   public static class DataAnalysisPivotHeaderV1 implements ToSchema
+   {
+      @OpenAPIDescription("Typed group key; null for a blank group or Other.")
+      public Serializable value;
+
+      @OpenAPIDescription("Display label, including Other (k groups).")
+      public String label;
+
+      /*******************************************************************************
+       ** Explicit references preserve the standalone extension contract.
+       *******************************************************************************/
+      @Override
+      public Schema toSchema()
+      {
+         Map<String, Schema> properties = new LinkedHashMap<>();
+         properties.put("value", new Schema().withNullable(true).withDescription("Typed group key; null for a blank group or Other."));
+         properties.put("label", new Schema().withType(Type.STRING).withDescription("Display label, including Other (k groups)."));
+         return (new Schema().withType(Type.OBJECT).withProperties(properties));
+      }
+   }
+
+   /*******************************************************************************
+    ** PivotMeasureInfo version 1 transport contract.
+    *******************************************************************************/
+   public static class DataAnalysisPivotMeasureInfoV1 implements ToSchema
+   {
+      @OpenAPIDescription("Stable measure key by request position.")
+      public String key;
+
+      @OpenAPIDescription("Display label.")
+      public String label;
+
+      @OpenAPIDescription("Semantic metric type.")
+      public ValueType valueType;
+
+      /*******************************************************************************
+       ** Explicit references preserve the standalone extension contract.
+       *******************************************************************************/
+      @Override
+      public Schema toSchema()
+      {
+         Map<String, Schema> properties = new LinkedHashMap<>();
+         properties.put("key", new Schema().withType(Type.STRING).withDescription("Stable measure key by request position."));
+         properties.put("label", new Schema().withType(Type.STRING).withDescription("Display label."));
+         properties.put("valueType", new Schema().withType(Type.STRING).withEnumValues(java.util.Arrays.stream(ValueType.values()).map(Enum::name).toList()).withDescription("Semantic metric type."));
+         return (new Schema().withType(Type.OBJECT).withProperties(properties));
+      }
+   }
+
+   /*******************************************************************************
+    ** PivotCell version 1 transport contract.
+    *******************************************************************************/
+   public static class DataAnalysisPivotCellV1 implements ToSchema
+   {
+      @OpenAPIDescription("Zero-based index in rowHeaders.")
+      public Integer rowIndex;
+
+      @OpenAPIDescription("Zero-based index in columnHeaders.")
+      public Integer columnIndex;
+
+      @OpenAPIDescription("Metrics in requested measure order; suppressed metrics have no value or drill.")
+      public List<DataAnalysisMetricV1> values;
+
+      /*******************************************************************************
+       ** Explicit references preserve the standalone extension contract.
+       *******************************************************************************/
+      @Override
+      public Schema toSchema()
+      {
+         Map<String, Schema> properties = new LinkedHashMap<>();
+         properties.put("rowIndex", new Schema().withType(Type.INTEGER).withDescription("Zero-based index in rowHeaders."));
+         properties.put("columnIndex", new Schema().withType(Type.INTEGER).withDescription("Zero-based index in columnHeaders."));
+         properties.put("values", array(ref("DataAnalysisMetricV1")).withDescription("Metrics in requested measure order; suppressed metrics have no value or drill."));
+         return (new Schema().withType(Type.OBJECT).withProperties(properties));
+      }
+   }
+
+   /*******************************************************************************
+    ** Pivot version 1 transport contract.
+    *******************************************************************************/
+   public static class DataAnalysisPivotV1 implements ToSchema
+   {
+      @OpenAPIDescription("Row header tuples in cell-index order.")
+      public List<List<DataAnalysisPivotHeaderV1>> rowHeaders;
+
+      @OpenAPIDescription("Column header tuples; an empty tuple represents no column dimensions.")
+      public List<List<DataAnalysisPivotHeaderV1>> columnHeaders;
+
+      @OpenAPIDescription("Measure metadata in request order.")
+      public List<DataAnalysisPivotMeasureInfoV1> measures;
+
+      @OpenAPIDescription("Sparse cells; absent combinations are not materialized.")
+      public List<DataAnalysisPivotCellV1> cells;
+
+      @OpenAPIDescription("Metric tuples aligned with rowHeaders; empty when totals disabled.")
+      public List<List<DataAnalysisMetricV1>> rowTotals;
+
+      @OpenAPIDescription("Metric tuples aligned with columnHeaders; empty when totals disabled.")
+      public List<List<DataAnalysisMetricV1>> columnTotals;
+
+      @OpenAPIDescription("Grand-total metrics; empty when totals disabled.")
+      public List<DataAnalysisMetricV1> grandTotals;
+
+      @OpenAPIDescription("Row groups were merged into Other.")
+      public Boolean truncatedRows;
+
+      @OpenAPIDescription("Column groups were merged into Other.")
+      public Boolean truncatedColumns;
+
+      @OpenAPIDescription("True when bounded streamed fallback produced a partial result.")
+      public Boolean estimate;
+
+      @OpenAPIDescription("Privacy, partial-result and joined-drill limitations.")
+      public List<String> warnings;
+
+      @OpenAPIDescription("UTC timestamp of computation.")
+      public String asOf;
+
+      /*******************************************************************************
+       ** Explicit references preserve the standalone extension contract.
+       *******************************************************************************/
+      @Override
+      public Schema toSchema()
+      {
+         Map<String, Schema> properties = new LinkedHashMap<>();
+         properties.put("rowHeaders", array(array(ref("DataAnalysisPivotHeaderV1"))).withDescription("Row header tuples in cell-index order."));
+         properties.put("columnHeaders", array(array(ref("DataAnalysisPivotHeaderV1"))).withDescription("Column header tuples; an empty tuple represents no column dimensions."));
+         properties.put("measures", array(ref("DataAnalysisPivotMeasureInfoV1")).withDescription("Measure metadata in request order."));
+         properties.put("cells", array(ref("DataAnalysisPivotCellV1")).withDescription("Sparse cells; absent combinations are not materialized."));
+         properties.put("rowTotals", array(array(ref("DataAnalysisMetricV1"))).withDescription("Metric tuples aligned with rowHeaders; empty when totals disabled."));
+         properties.put("columnTotals", array(array(ref("DataAnalysisMetricV1"))).withDescription("Metric tuples aligned with columnHeaders; empty when totals disabled."));
+         properties.put("grandTotals", array(ref("DataAnalysisMetricV1")).withDescription("Grand-total metrics; empty when totals disabled."));
+         properties.put("truncatedRows", new Schema().withType(Type.BOOLEAN).withDescription("Row groups were merged into Other."));
+         properties.put("truncatedColumns", new Schema().withType(Type.BOOLEAN).withDescription("Column groups were merged into Other."));
+         properties.put("estimate", new Schema().withType(Type.BOOLEAN).withDescription("True when bounded streamed fallback produced a partial result."));
+         properties.put("warnings", array(new Schema().withType(Type.STRING)).withDescription("Privacy, partial-result and joined-drill limitations."));
+         properties.put("asOf", new Schema().withType(Type.STRING).withDescription("UTC timestamp of computation."));
+         return (new Schema().withType(Type.OBJECT).withProperties(properties));
+      }
+   }
+
 }

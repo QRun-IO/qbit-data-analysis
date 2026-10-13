@@ -61,7 +61,7 @@ import static org.assertj.core.api.Assertions.within;
 /*******************************************************************************
  ** Shared backend acceptance tests, including a generic drill equivalence walker.
  *******************************************************************************/
-abstract class EngineContractTest extends EngineFixture
+abstract class EngineContractTest extends PivotContractTest
 {
    /*******************************************************************************
     ** Every emitted key across all profile kinds has a label, on every backend.
@@ -249,7 +249,7 @@ abstract class EngineContractTest extends EngineFixture
    void permissionChecks() throws Exception
    {
       assertThat(service.capabilities("orders").getFields()).doesNotContain("secret");
-      assertThatThrownBy(() -> service.columnProfile(column("secret"))).isInstanceOf(QPermissionDeniedException.class);
+      assertThatThrownBy(() -> service.columnProfile(column("secret"))).isInstanceOf(com.kingsrook.qqq.backend.core.exceptions.QBadRequestException.class);
       QContext.init(instance, TestSupport.user("alice").withPermission("orders.analyze"));
       assertThatThrownBy(() -> service.columnProfile(column("amount"))).isInstanceOf(QPermissionDeniedException.class);
       QContext.init(instance, TestSupport.user("alice").withPermission("orders.read"));
@@ -258,7 +258,7 @@ abstract class EngineContractTest extends EngineFixture
       config.withTableDefaults(Map.of("orders", new TableAnalysisDefaults().withExcludedFields(Set.of("amount"))));
       service.getConfigResolver().invalidate();
       assertThat(service.capabilities("orders").getFields()).doesNotContain("amount");
-      assertThatThrownBy(() -> service.columnProfile(column("amount"))).isInstanceOf(QPermissionDeniedException.class);
+      assertThatThrownBy(() -> service.columnProfile(column("amount"))).isInstanceOf(com.kingsrook.qqq.backend.core.exceptions.QBadRequestException.class);
       assertThatThrownBy(() -> service.capabilities("missing")).isInstanceOf(QPermissionDeniedException.class);
    }
 

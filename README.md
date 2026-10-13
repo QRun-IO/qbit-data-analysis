@@ -138,7 +138,7 @@ Count drills combine an untouched copy of the request filter with their producin
 
 ## HTTP endpoints
 
-Extension `data-analysis` version **1.0.0**, prefix `/qbit/data-analysis` inside `/qqq/v1`:
+Extension `data-analysis` version **1.1.0**, prefix `/qbit/data-analysis` inside `/qqq/v1`:
 
 | Method | Path after `/qqq/v1` | Body or purpose |
 | --- | --- | --- |
@@ -147,18 +147,33 @@ Extension `data-analysis` version **1.0.0**, prefix `/qbit/data-analysis` inside
 | POST | `/qbit/data-analysis/tables/{table}/distinct-values` | `{fieldName, filter, page, pageSize, search}` |
 | POST | `/qbit/data-analysis/tables/{table}/table-profile` | `{filter, fields}` |
 | POST | `/qbit/data-analysis/tables/{table}/duplicates` | `{fields, filter, limit}`; default limit 50, maximum 500 |
+| POST | `/qbit/data-analysis/tables/{table}/pivot` | `{rows, columns, values, filter, showTotals, limitGroups}`; 1–3 row dimensions, 0–2 column dimensions, 1–6 measures |
 | POST | `/qbit/data-analysis/runs` | `{operation: COLUMN_PROFILE or TABLE_PROFILE, tableName, request}` returns `{runId, status}` |
 | GET | `/qbit/data-analysis/runs/{runId}` | Status, timestamps, error, typed `columnProfile` or `tableProfile` |
 
 Every operation uses the request session through `DataAnalysisService`. Capabilities returns 200 with `canAnalyze: false` and no fields when denied. Other permission denials return 403, bad bodies or unavailable fields return 400, and unknown tables return 404. Core middleware supplies plain messages in its standard `{error: message}` JSON envelope. Run rows remain owner-locked.
 
-Requests and drills reuse core's `QueryFilter` JSON shape and schema reference. Versioned `DataAnalysis...V1` schemas cover profiles, metrics, drills, charts, series, points, field summaries, distinct and duplicate results, capabilities and runs. The [OpenAPI fragment](src/main/resources/openapi/qqq-v1/data-analysis.yaml) is checked against regeneration. The deployed `/qqq/v1/openapi.json` and `UiApiInvoker.listOperations()` include all seven operations.
+Requests and drills reuse core's `QueryFilter` JSON shape and schema reference. Versioned `DataAnalysis...V1` schemas cover profiles, metrics, drills, charts, series, points, field summaries, distinct and duplicate results, capabilities and runs. The [OpenAPI fragment](src/main/resources/openapi/qqq-v1/data-analysis.yaml) is checked against regeneration. The deployed `/qqq/v1/openapi.json` and `UiApiInvoker.listOperations()` include all eight operations.
 
 Regenerate deliberately after an API change:
 
 ```bash
 ./mvnw -o -q test -Dtest=DataAnalysisApiTest#contract -Dopenapi.write=true -Dqqq.snapshot.version=4.1.0-DATAANALYSIS-SNAPSHOT
 ```
+
+## Pivot backend and field access
+
+`DataAnalysisService.pivot(PivotRequest)` returns sparse cells indexed into row/column header tuples, aligned totals, typed/formatted metrics, warnings and `asOf`. `COUNT` counts records (including null measure values); other operators require a field. `PERCENTILE` uses continuous interpolation with a fraction from 0 to 1. Calendar buckets use the session timezone. Numeric bins reuse profile nice-edge selection when explicit bounds are omitted; the last interior bin includes its maximum.
+
+The planner first requests count-ordered top-N groups for every dimension (default 50, maximum 200), then dimension counts for privacy/cardinality, one grouped matrix and one aggregate per totals level. Additional aggregates recompute merged Other cells/totals: averages, distinct counts and percentiles cannot safely be combined from displayed cells. Ordinary Other predicates exclude kept values and handle null/empty strings separately. Boolean, temporal and bucketed Other groups use equivalent membership/range predicates for core HTTP compatibility. Cyclic date predicates enumerate observed values through core grouping; memory numeric boundaries reuse the profiles' decimal-scale compatibility helper. Native pivots are exact; bounded core streamed fallback marks partial results as estimates and disables their drills.
+
+`joinTable.field` resolves only through an unambiguous exposed join path. Every table in that path requires READ and the selected field must be FULL; core enforces joins and record locks. The installed data-analysis snapshot does not contain the related-record picker path API, so this implementation uses `getExposedJoins()` and `QueryJoin`. Paths whose every hop is MANY_TO_ONE or ONE_TO_ONE in the analyzed direction support ordinary filter-only drills: core infers the joins from qualified criteria. To-many paths can multiply a base record, so their pivots retain null drills and warn that counts include one row per related table record.
+
+`min_group_size` suppresses rare dimension groups and rare row/column tuples; every measure of a small cell or total is suppressed, including COUNT, with no drill. Totals include the full authorized population. As with existing profiles, separate aggregate calls are not a transactional snapshot.
+
+Hosts can supply `withFieldAnalysisAccessResolver(() -> resolver)`. FULL fields alone appear in capabilities and may be selected. EXACT_MATCH_ONLY and NONE get the same 400 as an unknown field; user-authored filters are passed through for core enforcement. Generated drills using a restricted field (including representative primary keys) are disabled. Related PVS display labels also require FULL access. Exact-run cache identities hash the sorted FULL-field list, the optional core access fingerprint, and related label access.
+
+The default resolver discovers the optional core `fieldaccess.FieldAccessHelper` class and its static methods once. FULL maps to FULL, REVEALABLE to EXACT_MATCH_ONLY, MASKED/HIDDEN to NONE. Without that class, legacy field locks supply FULL/NONE. Replace the reflective calls when the core package ships. Reflection tests use a local stand-in helper rather than shadowing a future real core class at its FQN; the installed snapshot exercises the actual fallback selection. Exact-run persistence continues to support profiles only; pivot results are synchronous.
 
 ## Backend selection
 
@@ -180,7 +195,7 @@ Data versions use filtered COUNT plus MAX of a readable modification-date-like f
 4. Review per-table include/exclude sets, limits and minimum group sizes before enabling analysis. Integrate Saved Analyses and Watches with host ESB/Quick Search when those optional host features are installed; this scaffold does not add those dependencies.
 5. Use the Analyses home as the owner of analysis data. Other dashboards should link there until saved-analysis widgets are implemented.
 
-Phase **b** profiles, drill-through, runs/cache and HTTP endpoints are implemented. Remaining work: **b** analysis UI; **c** pivots; **d** comparisons and relationships; **e** watch evaluation and alerts; **f** saved-analysis execution, sharing, stars integration, schedules, chart widgets, full home and exports. The current home summarizes stored rows; the host facade executes profiles. The home does not send deliveries.
+Phase **b** profiles, drill-through, runs/cache and HTTP endpoints, and phase **c** pivot backend are implemented. Remaining work: **b** analysis UI; **c** pivot UI; **d** comparisons and relationships; **e** watch evaluation and alerts; **f** saved-analysis execution, sharing, stars integration, schedules, chart widgets, full home and exports. The current home summarizes stored rows; the host facade executes profiles. The home does not send deliveries.
 
 ## Build
 

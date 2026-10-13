@@ -441,7 +441,8 @@ public class AnalysisRunService
       identity.put("zone", ValueUtils.getSessionOrInstanceZoneId().getId());
       identity.put("config", service.getConfigResolver().resolve(request.getTableName()));
       identity.put("fields", service.capabilities(request.getTableName()).getFields().stream().sorted().toList());
-      identity.put("policy", com.kingsrook.qbits.dataanalysis.engine.AnalysisLabels.policy(request.getTableName()));
+      identity.put("fieldAccess", digest(service.fieldAccessFingerprint(request.getTableName())));
+      identity.put("policy", service.fieldAccessPolicy(request.getTableName()));
       identity.put("backendVariants", QContext.getQSession().getBackendVariants());
       try
       {

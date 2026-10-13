@@ -34,6 +34,14 @@ public record NiceBins(BigDecimal low, BigDecimal high, int count)
     *******************************************************************************/
    public static NiceBins covering(BigDecimal low, BigDecimal high)
    {
+      return (covering(low, high, 20));
+   }
+
+   /*******************************************************************************
+    ** Choose readable enclosing edges for a requested pivot bin count.
+    *******************************************************************************/
+   public static NiceBins covering(BigDecimal low, BigDecimal high, int target)
+   {
       BigDecimal span = high.subtract(low);
       if(span.signum() == 0)
       {
@@ -41,7 +49,7 @@ public record NiceBins(BigDecimal low, BigDecimal high, int count)
          low = low.subtract(span.divide(BigDecimal.valueOf(2)));
          high = high.add(span.divide(BigDecimal.valueOf(2)));
       }
-      int exponent = span.precision() - span.scale() - 2;
+      int exponent = span.precision() - span.scale() - Integer.toString(target).length();
       NiceBins best = null;
       for(int power = exponent - 2; power <= exponent + 2; power++)
       {
@@ -51,7 +59,7 @@ public record NiceBins(BigDecimal low, BigDecimal high, int count)
             BigDecimal first = low.divide(step, 0, RoundingMode.FLOOR).multiply(step);
             BigDecimal last = high.divide(step, 0, RoundingMode.CEILING).multiply(step);
             int count = last.subtract(first).divide(step).intValueExact();
-            if(count >= 10 && count <= 25 && (best == null || Math.abs(count - 20) < Math.abs(best.count() - 20)))
+            if(count >= Math.max(1, target / 2) && count <= Math.max(2, target * 5 / 4) && (best == null || Math.abs(count - target) < Math.abs(best.count() - target)))
             {
                best = new NiceBins(first, last, count);
             }

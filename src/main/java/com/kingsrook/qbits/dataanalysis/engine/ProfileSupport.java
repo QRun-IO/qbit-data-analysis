@@ -109,13 +109,22 @@ public final class ProfileSupport
     *******************************************************************************/
    public static List<ValueCount> values(String table, QQueryFilter filter, QFieldMetaData field, List<AnalysisBackend.GroupCount> groups, long total) throws QException
    {
+      return (values(table, filter, field, groups, total, CoreTierFieldAccessResolver.defaultResolver()));
+   }
+
+   /*******************************************************************************
+    ** Host field policy applies to related display labels as well as source values.
+    *******************************************************************************/
+   public static List<ValueCount> values(String table, QQueryFilter filter, QFieldMetaData field, List<AnalysisBackend.GroupCount> groups, long total,
+      FieldAnalysisAccessResolver access) throws QException
+   {
       List<ValueCount> result = new ArrayList<>();
       for(AnalysisBackend.GroupCount group : groups)
       {
          String label = group.label();
          if(field != null && field.getPossibleValueSourceName() != null && group.value() != null)
          {
-            String translated = AnalysisLabels.translate(field, group.value());
+            String translated = AnalysisLabels.translate(field, group.value(), access);
             if(translated != null)
             {
                label = translated;

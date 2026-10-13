@@ -143,4 +143,16 @@ public class MinGroupSizeGuard
          profile.getText().withHistogram(groups(profile.getText().getHistogram())).withPatterns(groups(profile.getText().getPatterns()));
       }
    }
+
+   /*******************************************************************************
+    ** Small pivot cells suppress every measure, including count, with no drill.
+    *******************************************************************************/
+   public void pivotMetrics(List<Metric> metrics, long rows)
+   {
+      if(rows < minimum)
+      {
+         metrics.forEach(m -> m.withValue(null).withFormatted(null).withDrill(null).withSuppressed(true)
+            .withSuppressedReason("Hidden: fewer than " + minimum + " records"));
+      }
+   }
 }

@@ -34,13 +34,23 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 public class DistinctValues
 {
    private final AnalysisBackend backend;
+   private final FieldAnalysisAccessResolver fieldAccess;
 
    /*******************************************************************************
     ** Bind primitive operations.
     *******************************************************************************/
    public DistinctValues(AnalysisBackend backend)
    {
+      this(backend, CoreTierFieldAccessResolver.defaultResolver());
+   }
+
+   /*******************************************************************************
+    ** Bind the host field policy for possible-value labels.
+    *******************************************************************************/
+   public DistinctValues(AnalysisBackend backend, FieldAnalysisAccessResolver fieldAccess)
+   {
       this.backend = backend;
+      this.fieldAccess = fieldAccess;
    }
 
 
@@ -60,7 +70,7 @@ public class DistinctValues
       boolean wholeListing = config.getMinGroupSize() > 0 || request.getSearch() != null && !request.getSearch().isBlank();
       int fetch = wholeListing ? Math.max(1, config.getMaxRows()) : request.getPageSize() + 1;
       List<ValueCount> values = ProfileSupport.values(request.getTableName(), scope.filter(), field,
-         backend.topValues(request.getTableName(), scope.filter(), field.getName(), fetch, wholeListing ? 0 : offset, request.getSearch()), scope.rowsScanned());
+         backend.topValues(request.getTableName(), scope.filter(), field.getName(), fetch, wholeListing ? 0 : offset, request.getSearch()), scope.rowsScanned(), fieldAccess);
       long totalDistinct = wholeListing ? values.stream().filter(v -> v.getValue() != null).count()
          : backend.fieldCounts(request.getTableName(), scope.filter(), List.of(field.getName())).get(field.getName()).distinct();
       values = new MinGroupSizeGuard(config.getMinGroupSize()).groups(values);
