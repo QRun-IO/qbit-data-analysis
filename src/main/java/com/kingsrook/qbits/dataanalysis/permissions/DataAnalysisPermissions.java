@@ -27,12 +27,11 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
-import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
 /*******************************************************************************
- ** Data Analysis permissions and the temporary per-table feature check.
+ ** Data Analysis permissions through the core table feature registry.
  *******************************************************************************/
 public final class DataAnalysisPermissions
 {
@@ -68,9 +67,8 @@ public final class DataAnalysisPermissions
     *******************************************************************************/
    public static boolean canAnalyze(QTableMetaData table)
    {
-      QSession session = QContext.getQSession();
       boolean read = !Boolean.TRUE.equals(QContext.getQInstance().getEnforcePermissionsInCoreActions())
          || PermissionsHelper.hasTablePermission(new QueryInput(table.getName()), table.getName(), TablePermissionSubType.READ);
-      return (read && session != null && session.hasPermission(analyzePermissionName(table)));
+      return (read && PermissionsHelper.hasTableFeaturePermission(QContext.getQInstance(), QContext.getQSession(), table, "analyze"));
    }
 }

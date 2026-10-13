@@ -36,6 +36,7 @@ public class DuplicatesRequest implements AnalysisRequest
    private QQueryFilter filter;
    private Boolean exact = false;
    private List<String> fields;
+   private Integer limit = 50;
 
 
 
@@ -118,6 +119,23 @@ public class DuplicatesRequest implements AnalysisRequest
    public DuplicatesRequest withFields(List<String> fields)
    {
       this.fields = fields;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Maximum duplicate groups requested.
+    *******************************************************************************/
+   public Integer getLimit()
+   {
+      return (limit);
+   }
+
+   /*******************************************************************************
+    ** Fluent duplicate group limit.
+    *******************************************************************************/
+   public DuplicatesRequest withLimit(Integer limit)
+   {
+      this.limit = limit;
       return (this);
    }
 }

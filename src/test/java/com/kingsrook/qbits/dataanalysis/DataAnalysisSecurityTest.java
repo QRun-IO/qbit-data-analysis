@@ -91,7 +91,7 @@ class DataAnalysisSecurityTest
       instance.withEnforcePermissionsInCoreActions(false);
       assertThat(DataAnalysisPermissions.canAnalyze(table)).isFalse();
       QContext.init(instance, TestSupport.user("alice").withPermission("sales.orders.analyze"));
-      assertThat(DataAnalysisPermissions.canAnalyze(table)).isTrue();
+      assertThat(DataAnalysisPermissions.canAnalyze(table)).isFalse();
       table.withPermissionRules(null);
       instance.withDefaultPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS).withPermissionBaseName("defaultBase"));
       assertThat(DataAnalysisPermissions.analyzePermissionName(table)).isEqualTo("defaultBase.analyze");
@@ -100,6 +100,29 @@ class DataAnalysisSecurityTest
    }
 
 
+
+   /*******************************************************************************
+    ** The core permission catalog honors configured inclusion and exclusion.
+    *******************************************************************************/
+   @Test
+   void analyzeCatalog() throws Exception
+   {
+      QInstance instance = new QInstance().withEnforcePermissionsInCoreActions(true);
+      instance.addBackend(new com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData().withName("memory").withBackendType(com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule.class));
+      for(String name : List.of("orders", "excluded", "outside"))
+      {
+         instance.addTable(new QTableMetaData().withName(name).withLabel(name).withPermissionRules(
+            new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS)));
+      }
+      new DataAnalysisQBitProducer().withQBitConfig(new DataAnalysisQBitConfig().withBackendName("memory")
+         .withIncludeTables(java.util.Set.of("orders", "excluded")).withExcludeTables(java.util.Set.of("excluded"))).produce(instance);
+      assertThat(com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper.getAllAvailablePermissions(instance)).anySatisfy(permission ->
+      {
+         assertThat(permission.getName()).isEqualTo("orders.analyze");
+         assertThat(permission.getPermissionType()).isEqualTo("Analyze");
+      }).noneMatch(permission -> permission.getName().equals("excluded.analyze") || permission.getName().equals("outside.analyze")
+         || permission.getName().startsWith("data_analysis") && permission.getName().endsWith(".analyze"));
+   }
 
    /*******************************************************************************
     ** Saved, star and run locks hide others even when the shared flag is true.

@@ -68,38 +68,40 @@ public class ColumnProfiler
       String name = field.getName();
       QQueryFilter filter = scope.filter();
       long rows = backend.count(table, filter);
+      QQueryFilter drillFilter = scope.estimate() ? request.getFilter() : filter;
       AnalysisBackend.FieldCounts counts = backend.fieldCounts(table, filter, List.of(name)).get(name);
       ColumnProfile result = new ColumnProfile().withTableName(table).withFieldName(name).withFieldLabel(field.getLabel()).withFieldType(field.getType().name())
-         .withFilter(DrillFilters.restoreTypes(request.getTableName(), request.getFilter())).withEstimate(scope.estimate()).withSampleRows(scope.estimate() ? rows : 0L)
+         .withFilter(DrillFilters.restoreTypes(request.getTableName(), request.getFilter())).withEstimate(scope.estimate()).withSampleRows(scope.estimate() ? scope.rowsScanned() : 0L)
          .withRowsScanned(scope.rowsScanned()).withTruncated(scope.truncated()).withAsOf(Instant.now());
-      result.getCounts().add(ProfileSupport.count("rows", rows, table, filter, null));
-      result.getCounts().add(ProfileSupport.count("nonNull", counts.nonNull(), table, filter, DrillFilters.nonNull(name, field.getType().isStringLike())));
-      result.getCounts().add(ProfileSupport.count("nulls", counts.nulls(), table, filter, DrillFilters.nulls(name, field.getType().isStringLike())));
+      result.getCounts().add(ProfileSupport.count("rows", scope.estimate() ? scope.total() : rows, table, drillFilter, null));
+      result.getCounts().add(ProfileSupport.count("nonNull", counts.nonNull(), table, drillFilter, DrillFilters.nonNull(name, field.getType().isStringLike())));
+      result.getCounts().add(ProfileSupport.count("nulls", counts.nulls(), table, drillFilter, DrillFilters.nulls(name, field.getType().isStringLike())));
       if(field.getType().isStringLike())
       {
-         result.getCounts().add(ProfileSupport.count("blanks", counts.blanks(), table, filter, counts.blankFilter()));
+         result.getCounts().add(ProfileSupport.count("blanks", counts.blanks(), table, drillFilter, counts.blankFilter()));
       }
-      result.getCounts().add(ProfileSupport.count("distinct", counts.distinct(), table, filter, counts.distinctFilter()));
-      result.getCounts().add(ProfileSupport.metric("uniqueness", ProfileSupport.share(counts.distinct(), counts.nonNull()), ValueType.PERCENT));
-      result.withTopValues(ProfileSupport.values(table, filter, field, backend.topValues(table, filter, name, 20, 0, null), rows));
+      result.getCounts().add(ProfileSupport.count("distinct", counts.distinct(), table, drillFilter, counts.distinctFilter()));
+      result.getCounts().add(ProfileSupport.metric("uniqueness", counts.uniqueness(), ValueType.PERCENT));
+      result.withTopValues(ProfileSupport.values(table, drillFilter, field, backend.topValues(table, filter, name, 20, 0, null), rows));
       QFieldType type = field.getType();
       if(type == QFieldType.INTEGER || type == QFieldType.LONG || type == QFieldType.DECIMAL)
       {
-         numeric(result, filter, rows);
+         numeric(result, filter, drillFilter, rows);
       }
       else if(type == QFieldType.DATE || type == QFieldType.DATE_TIME)
       {
-         dates(result, filter, rows, type);
+         dates(result, filter, drillFilter, rows, type);
       }
       else if(type.isStringLike())
       {
          AnalysisBackend.LengthSummary summary = backend.lengthSummary(table, filter, name);
-         TextProfile text = new TextProfile().withHistogram(ProfileSupport.values(table, filter, null, summary.histogram(), rows))
-            .withPatterns(ProfileSupport.values(table, filter, null, backend.patterns(table, filter, name, 10_000), Math.min(rows, 10_000)))
-            .withSampleRows(Math.min(rows, 10_000));
+         TextProfile text = new TextProfile().withHistogram(ProfileSupport.values(table, drillFilter, null, summary.histogram(), rows))
+            .withPatterns(ProfileSupport.values(table, drillFilter, null, backend.patterns(table, filter, name, 10_000), Math.min(rows, 10_000)))
+            .withSampleRows(Math.min(scope.rowsScanned(), 10_000));
          summary.metrics().forEach((key, value) -> text.getMetrics().add(ProfileSupport.metric(key, value, ValueType.DECIMAL)));
          result.withText(text);
-         result.getWarnings().add("Patterns use the first " + Math.min(rows, 10_000) + " rows by primary key.");
+         result.getWarnings().add(scope.samplePercent() == null ? "Patterns use the first " + Math.min(rows, 10_000) + " rows by primary key."
+            : "Patterns use up to " + Math.min(scope.rowsScanned(), 10_000) + " sampled rows.");
       }
       else if(type == QFieldType.BOOLEAN)
       {
@@ -107,11 +109,28 @@ public class ColumnProfiler
          for(boolean value : List.of(true, false))
          {
             QQueryFilter condition = DrillFilters.value(name, value, false);
-            result.getBooleans().add(ProfileSupport.count(Boolean.toString(value), backend.count(table, DrillFilters.and(filter, condition)), table, filter, condition));
+            result.getBooleans().add(ProfileSupport.count(Boolean.toString(value), backend.count(table, DrillFilters.and(filter, condition)), table, drillFilter, condition));
          }
-         result.getBooleans().add(ProfileSupport.count("nulls", counts.nulls(), table, filter, DrillFilters.nulls(name, false)));
+         result.getBooleans().add(ProfileSupport.count("nulls", counts.nulls(), table, drillFilter, DrillFilters.nulls(name, false)));
       }
       new MinGroupSizeGuard(config.getMinGroupSize()).column(result, rows);
+      if(scope.estimate())
+      {
+         ProfileSupport.markEstimates(result.getCounts());
+         ProfileSupport.markEstimates(result.getBooleans());
+         if(result.getNumeric() != null)
+         {
+            ProfileSupport.markEstimates(result.getNumeric().getMetrics());
+         }
+         if(result.getDates() != null)
+         {
+            ProfileSupport.markEstimates(result.getDates().getMetrics());
+         }
+         if(result.getText() != null)
+         {
+            ProfileSupport.markEstimates(result.getText().getMetrics());
+         }
+      }
       if(field.getPossibleValueSourceName() != null || result.getNumeric() == null && result.getDates() == null)
       {
          result.withChart(ProfileSupport.chart(ChartKind.BAR, ChartKind.PARETO, name, result.getTopValues()));
@@ -128,17 +147,22 @@ public class ColumnProfiler
       {
          result.getWarnings().add("No readable records match this analysis scope.");
       }
-      else if(counts.nonNull() == 0)
+      else if(counts.nonNull() == 0 && (!scope.estimate() || scope.rowsScanned() > 0))
       {
          result.getWarnings().add("All values in this analysis scope are null.");
       }
       if(scope.estimate())
       {
-         result.getWarnings().add("Estimate: first " + rows + " rows by primary key; not a random sample.");
+         result.getWarnings().add(scope.warning());
+         if(scope.rowsScanned() == 0)
+         {
+            result.getWarnings().add("No sample rows were observed; run exact for exact numbers.");
+         }
       }
       if(scope.truncated())
       {
-         result.getWarnings().add("Partial result: max_rows reached; counts and drills cover only the selected prefix.");
+         result.getWarnings().add(scope.estimate() ? "Partial result: max_rows reached; counts cover the selected prefix and drills cover the full population."
+            : "Partial result: max_rows reached; counts and drills cover only the selected prefix.");
       }
       return (result);
    }
@@ -148,7 +172,7 @@ public class ColumnProfiler
    /*******************************************************************************
     ** Numeric moments, twenty interior bins, exterior bins and Tukey outliers.
     *******************************************************************************/
-   private void numeric(ColumnProfile result, QQueryFilter filter, long rows) throws QException
+   private void numeric(ColumnProfile result, QQueryFilter filter, QQueryFilter drillFilter, long rows) throws QException
    {
       String table = result.getTableName();
       String field = result.getFieldName();
@@ -158,12 +182,12 @@ public class ColumnProfiler
       summary.metrics().forEach((key, value) -> numeric.getMetrics().add(ProfileSupport.metric(key, value, ValueType.DECIMAL)));
       for(AnalysisBackend.GroupCount count : summary.counts())
       {
-         numeric.getMetrics().add(ProfileSupport.count(count.label(), count.count(), table, filter, count.condition()));
+         numeric.getMetrics().add(ProfileSupport.count(count.label(), count.count(), table, drillFilter, count.condition()));
       }
-      numeric.getMetrics().add(ProfileSupport.count("outliers", summary.outlierCount(), table, filter, summary.outlierFilter()));
-      numeric.withHistogram(ProfileSupport.values(table, filter, null,
+      numeric.getMetrics().add(ProfileSupport.count("outliers", summary.outlierCount(), table, drillFilter, summary.outlierFilter()));
+      numeric.withHistogram(ProfileSupport.values(table, drillFilter, null,
          backend.numericHistogram(table, filter, field, summary.metrics().get("p1"), summary.metrics().get("p99"), 20), rows));
-      numeric.withOutliers(ProfileSupport.values(table, filter, null, summary.outliers(), rows));
+      numeric.withOutliers(ProfileSupport.values(table, drillFilter, null, summary.outliers(), rows));
       result.withNumeric(numeric);
    }
 
@@ -172,7 +196,7 @@ public class ColumnProfiler
    /*******************************************************************************
     ** Date extrema, range, calendar volume, gaps and cyclic time patterns.
     *******************************************************************************/
-   private void dates(ColumnProfile result, QQueryFilter filter, long rows, QFieldType type) throws QException
+   private void dates(ColumnProfile result, QQueryFilter filter, QQueryFilter drillFilter, long rows, QFieldType type) throws QException
    {
       String table = result.getTableName();
       String field = result.getFieldName();
@@ -188,12 +212,12 @@ public class ColumnProfiler
          AnalysisBackend.DateUnit unit = autoBucket(first, last);
          dates.withUnit(unit.name());
          dates.getMetrics().add(ProfileSupport.metric("range", ChronoUnit.DAYS.between(first, last), ValueType.DURATION));
-         List<ValueCount> buckets = ProfileSupport.values(table, filter, null, backend.dateBuckets(table, filter, field, unit, zone), rows);
+         List<ValueCount> buckets = ProfileSupport.values(table, drillFilter, null, backend.dateBuckets(table, filter, field, unit, zone), rows);
          dates.withBuckets(buckets).withGaps(buckets.stream().filter(b -> b.getCount() == 0).toList());
          if(type == QFieldType.DATE_TIME)
          {
-            dates.withDayOfWeek(ProfileSupport.values(table, filter, null, backend.dateBuckets(table, filter, field, AnalysisBackend.DateUnit.DAY_OF_WEEK, zone), rows))
-               .withHourOfDay(ProfileSupport.values(table, filter, null, backend.dateBuckets(table, filter, field, AnalysisBackend.DateUnit.HOUR_OF_DAY, zone), rows));
+            dates.withDayOfWeek(ProfileSupport.values(table, drillFilter, null, backend.dateBuckets(table, filter, field, AnalysisBackend.DateUnit.DAY_OF_WEEK, zone), rows))
+               .withHourOfDay(ProfileSupport.values(table, drillFilter, null, backend.dateBuckets(table, filter, field, AnalysisBackend.DateUnit.HOUR_OF_DAY, zone), rows));
          }
       }
       result.withDates(dates);

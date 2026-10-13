@@ -25,7 +25,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
 
 /*******************************************************************************
- ** Instance-scoped service holder for future endpoints and host integrations.
+ ** Instance-scoped service holder for UI API endpoints and host integrations.
  *******************************************************************************/
 public class DataAnalysisRuntime implements QSupplementalInstanceMetaData
 {

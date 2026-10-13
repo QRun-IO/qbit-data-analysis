@@ -82,6 +82,24 @@ public final class ProfileSupport
 
 
    /*******************************************************************************
+    ** The population row total is exact even when other metrics are estimates.
+    *******************************************************************************/
+   public static void markEstimates(List<Metric> metrics)
+   {
+      if(metrics != null)
+      {
+         metrics.stream().filter(m -> !"rows".equals(m.getKey())).forEach(m ->
+         {
+            m.withEstimate(true);
+            if(m.getFormatted() != null)
+            {
+               m.withFormatted("≈ " + m.getFormatted());
+            }
+         });
+      }
+   }
+
+   /*******************************************************************************
     ** PVS translations run as the current user; drill values always remain ids.
     *******************************************************************************/
    public static List<ValueCount> values(String table, QQueryFilter filter, QFieldMetaData field, List<AnalysisBackend.GroupCount> groups, long total) throws QException
@@ -98,7 +116,7 @@ public final class ProfileSupport
                label = translated;
             }
          }
-         result.add(new ValueCount().withValue(group.value()).withLabel(label).withCount(group.count()).withShare(share(group.count(), total))
+         result.add(new ValueCount().withValue(group.value()).withLabel(label).withCount(group.count()).withShare(group.share() == null ? share(group.count(), total) : group.share())
             .withDrill(DrillFilters.drill(table, filter, group.condition())));
       }
       return (result);

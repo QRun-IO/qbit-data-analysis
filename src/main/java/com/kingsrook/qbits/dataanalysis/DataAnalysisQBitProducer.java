@@ -21,9 +21,12 @@
 package com.kingsrook.qbits.dataanalysis;
 
 
+import com.kingsrook.qbits.dataanalysis.api.DataAnalysisApi;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.TableFeaturePermission;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.TableFeaturePermissionsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaDataProducer;
 
@@ -129,6 +132,22 @@ public class DataAnalysisQBitProducer implements QBitMetaDataProducer<DataAnalys
       MetaDataProducerMultiOutput output = QBitMetaDataProducer.super.produce(instance);
       output.addSelfToInstance(instance);
       new DataAnalysisRuntime(qBitConfig).addSelfToInstance(instance);
+      var included = java.util.Set.copyOf(qBitConfig.getIncludeTables());
+      var excluded = java.util.Set.copyOf(qBitConfig.getExcludeTables());
+      TableFeaturePermissionsMetaData.ofOrWithNew(instance).withPermission(new TableFeaturePermission()
+         .withSuffix("analyze").withLabel("Analyze").withImpliedBy(null)
+         .withAppliesTo((qInstance, table) -> !table.getName().startsWith(DataAnalysisQBitConfig.TABLE_NAME_PREFIX)
+            && (included.isEmpty() || included.contains(table.getName())) && !excluded.contains(table.getName())));
+      try
+      {
+         Class.forName("io.javalin.Javalin");
+         Class.forName("com.kingsrook.qqq.middleware.javalin.QJavalinImplementation");
+         DataAnalysisApi.register(instance);
+      }
+      catch(ClassNotFoundException expected)
+      {
+         // The engine and metadata also work without the optional middleware.
+      }
       if(qBitConfig.getParentAppName() != null && instance.getApp(qBitConfig.getParentAppName()) != null)
       {
          instance.getApp(qBitConfig.getParentAppName()).withChild(instance.getApp(qBitConfig.getAppName()));

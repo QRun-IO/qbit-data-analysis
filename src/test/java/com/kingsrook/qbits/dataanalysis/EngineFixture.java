@@ -118,7 +118,15 @@ abstract class EngineFixture
             .withValue("note", notes[i]).withValue("paid", i == 11 ? null : i % 2 == 0).withValue("modifyDate", Instant.parse("2026-10-13T12:00:00Z")));
       }
       config = new DataAnalysisQBitConfig().withBackendName("memory");
-      service = new DataAnalysisService(config, Runnable::run);
+      service = newService(config, Runnable::run);
+   }
+
+   /*******************************************************************************
+    ** Allow the identical contract to exercise both primitive implementations.
+    *******************************************************************************/
+   protected DataAnalysisService newService(DataAnalysisQBitConfig configuration, java.util.concurrent.Executor executor)
+   {
+      return (new DataAnalysisService(configuration, executor));
    }
 
    /*******************************************************************************

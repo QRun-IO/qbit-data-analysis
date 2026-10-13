@@ -279,12 +279,26 @@ abstract class EngineContractTest extends EngineFixture
    void estimatesRunsAndCache() throws Exception
    {
       config.withDefaultSampleThresholdRows(5).withDefaultSampleRows(4);
-      service = new DataAnalysisService(config);
+      service = newService(config, java.util.concurrent.ForkJoinPool.commonPool());
       ColumnProfile estimate = service.columnProfile(column("amount"));
       assertThat(estimate.getEstimate()).isTrue();
-      assertThat(estimate.getSampleRows()).isEqualTo(4);
-      assertMetric(estimate.getCounts(), "rows", "4");
-      assertMetric(estimate.getNumeric().getMetrics(), "sum", "10");
+      assertMetric(estimate.getCounts(), "rows", "12");
+      assertThat(metric(estimate.getCounts(), "rows").getEstimate()).isFalse();
+      assertThat(metric(estimate.getCounts(), "nonNull").getEstimate()).isTrue();
+      assertThat(metric(estimate.getCounts(), "nonNull").getFormatted()).startsWith("≈ ");
+      assertDrills(estimate);
+      assertThat(count(metric(estimate.getCounts(), "rows").getDrill())).isEqualTo(12);
+      if(service.backend("orders") instanceof com.kingsrook.qbits.dataanalysis.engine.CoreAnalysisBackend)
+      {
+         assertThat(estimate.getWarnings()).anyMatch(w -> w.contains("random sample") && w.contains("scaled to the full 12 rows"));
+      }
+      else
+      {
+         assertThat(estimate.getSampleRows()).isEqualTo(4);
+         assertMetric(estimate.getCounts(), "nonNull", "4");
+         assertMetric(estimate.getNumeric().getMetrics(), "sum", "10");
+         assertThat(estimate.getWarnings()).contains("Estimate from the first 4 rows by id");
+      }
       String id = service.startExactRun(column("amount"));
       RunStatus run = awaitRun(id);
       assertThat(run.getStatus()).isEqualTo("COMPLETE");
@@ -444,6 +458,10 @@ abstract class EngineContractTest extends EngineFixture
     *******************************************************************************/
    private void walk(JsonNode node) throws Exception
    {
+      if(node.path("estimate").asBoolean(false))
+      {
+         return;
+      }
       if(node.isObject())
       {
          if(node.hasNonNull("drill"))
@@ -551,7 +569,7 @@ abstract class EngineContractTest extends EngineFixture
       int previous = runs().size();
       service.columnProfile(column("amount"));
       assertThat(runs()).hasSize(previous + 1);
-      service = new DataAnalysisService(config, task ->
+      service = newService(config, task ->
       {
          throw new java.util.concurrent.RejectedExecutionException("test");
       });
@@ -632,7 +650,7 @@ abstract class EngineContractTest extends EngineFixture
    void executionFailureAndGuardedBooleans() throws Exception
    {
       List<Runnable> jobs = new java.util.ArrayList<>();
-      service = new DataAnalysisService(config, jobs::add);
+      service = newService(config, jobs::add);
       String id = service.startExactRun(column("amount"));
       var table = instance.getTables().remove("orders");
       jobs.getFirst().run();
@@ -641,7 +659,7 @@ abstract class EngineContractTest extends EngineFixture
       assertThat(service.getRun(id).getError()).contains("could not be completed");
       assertThat(runs().getFirst().getValue("result_json")).isNull();
       config.withDefaultMinGroupSize(3);
-      service = new DataAnalysisService(config, Runnable::run);
+      service = newService(config, Runnable::run);
       var paid = service.columnProfile(column("paid"));
       assertThat(paid.getBooleans()).anySatisfy(m ->
       {
