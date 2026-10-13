@@ -128,6 +128,7 @@ public class DataAnalysisQBitProducer implements QBitMetaDataProducer<DataAnalys
       qBitConfig.validate(instance);
       MetaDataProducerMultiOutput output = QBitMetaDataProducer.super.produce(instance);
       output.addSelfToInstance(instance);
+      new DataAnalysisRuntime(qBitConfig).addSelfToInstance(instance);
       if(qBitConfig.getParentAppName() != null && instance.getApp(qBitConfig.getParentAppName()) != null)
       {
          instance.getApp(qBitConfig.getParentAppName()).withChild(instance.getApp(qBitConfig.getAppName()));

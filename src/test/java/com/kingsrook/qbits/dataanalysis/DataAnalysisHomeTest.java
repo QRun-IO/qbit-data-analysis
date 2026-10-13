@@ -61,7 +61,7 @@ class DataAnalysisHomeTest
       QInstance instance = TestSupport.instance();
       QContext.init(instance, TestSupport.user("alice").withPermissions("data_analysis.saved.read", "data_analysis.watch.read", "data_analysis.run.read"));
       String html = DataAnalysisHome.render(Instant.now());
-      assertThat(html).contains("Mine: 0", "Starred by me: 0", "No saved analyses yet: open any table and choose Analyze on a column header",
+      assertThat(html).contains("Mine: 0", "Starred by me: 0", "No saved analyses yet",
          "No active watches", "No completed or failed runs", "View all");
       assertThat(new DataAnalysisHome().render(new RenderWidgetInput())).isNotNull();
       QContext.init(instance, TestSupport.user("alice"));

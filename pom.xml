@@ -86,6 +86,11 @@
          <scope>test</scope>
       </dependency>
       <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-backend-module-postgres</artifactId>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
          <groupId>org.postgresql</groupId>
          <artifactId>postgresql</artifactId>
          <version>42.7.9</version>

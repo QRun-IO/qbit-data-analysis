@@ -119,7 +119,7 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
       {
          int mine = count(DataAnalysisTables.SAVED, equal("owner_user_id", userId));
          int shared = count(DataAnalysisTables.SAVED, equal("shared", true));
-         html.append("<p>Mine: ").append(mine).append(" · Shared (visible to you): ").append(shared).append("</p>");
+         html.append("<p>Mine: ").append(mine).append(" Â· Shared (visible to you): ").append(shared).append("</p>");
          if(canRead(DataAnalysisTables.SAVED_STAR))
          {
             CountInput stars = new CountInput(DataAnalysisTables.SAVED).withIncludeDistinctCount(true)
@@ -131,9 +131,9 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
          }
          if(mine == 0 && shared == 0)
          {
-            html.append("<p>No saved analyses yet: open any table and choose Analyze on a column header.</p>");
+            html.append("<p>No saved analyses yet. Saving analyses from the Analyze action is planned for a later release.</p>");
          }
-         html.append("<p>The Analyze action is planned for phase b; this scaffold currently stores definitions.</p>");
+         html.append("<p>The Analyze action will be available in a later UI release.</p>");
          link(html, DataAnalysisTables.SAVED);
       }
       else
@@ -145,7 +145,7 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
       {
          int enabled = count(DataAnalysisTables.WATCH, equal("enabled", true));
          int firing = count(DataAnalysisTables.WATCH, equal("state", "FIRING"));
-         html.append("<p>Enabled: ").append(enabled).append(" · Firing: ").append(firing).append("</p>");
+         html.append("<p>Enabled: ").append(enabled).append(" Â· Firing: ").append(firing).append("</p>");
          if(enabled == 0 && firing == 0)
          {
             html.append("<p>No active watches: watch evaluation is planned for phase e.</p>");
@@ -161,10 +161,10 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
       {
          int complete = count(DataAnalysisTables.RUN, recentRuns("COMPLETE", now));
          int failed = count(DataAnalysisTables.RUN, recentRuns("FAILED", now));
-         html.append("<p>Complete: ").append(complete).append(" · Failed: ").append(failed).append("</p>");
+         html.append("<p>Complete: ").append(complete).append(" Â· Failed: ").append(failed).append("</p>");
          if(complete == 0 && failed == 0)
          {
-            html.append("<p>No completed or failed runs in this period: exact analysis execution is planned for phase b.</p>");
+            html.append("<p>No completed or failed runs in this period.</p>");
          }
          link(html, DataAnalysisTables.RUN);
       }
