@@ -233,6 +233,32 @@ class TableConfigDefaultsTest extends EngineFixture
 
 
    /*******************************************************************************
+    ** The Result cache line says what each table resolves to, including mixed
+    ** settings, and a settings error is shown as needing attention, not as "on".
+    *******************************************************************************/
+   @Test
+   void resultCacheLineIsAccurate() throws Exception
+   {
+      DataAnalysisRuntime.service().getConfigResolver().getDefaults().withDefaultCacheTtlMinutes(0);
+      DataAnalysisRuntime.service().getConfigResolver().invalidate();
+      assertThat(DataAnalysisSetupStatus.load().get(1).detail()).startsWith("Off");
+
+      TestSupport.insert(DataAnalysisTables.TABLE_CONFIG, new QRecord().withValue("table_name", "orders").withValue("cache_ttl_minutes", 30));
+      DataAnalysisRuntime.service().getConfigResolver().invalidate();
+      DataAnalysisSetupStatus.Item mixed = DataAnalysisSetupStatus.load().get(1);
+      assertThat(mixed.state()).isEqualTo(DataAnalysisSetupStatus.State.OK);
+      assertThat(mixed.detail()).contains("default 0 min").contains("1 table: off").contains("1 table: 30 min");
+
+      TestSupport.insert(DataAnalysisTables.TABLE_CONFIG, new QRecord().withValue("table_name", "customer").withValue("cache_ttl_minutes", -5));
+      DataAnalysisRuntime.service().getConfigResolver().invalidate();
+      DataAnalysisSetupStatus.Item broken = DataAnalysisSetupStatus.load().get(1);
+      assertThat(broken.state()).isEqualTo(DataAnalysisSetupStatus.State.UNKNOWN);
+      assertThat(broken.detail()).contains("could not be read");
+   }
+
+
+
+   /*******************************************************************************
     ** The Setup card: defaults before rows, set up after, from the runtime's own
     ** resolution; optional features say what is missing.
     *******************************************************************************/

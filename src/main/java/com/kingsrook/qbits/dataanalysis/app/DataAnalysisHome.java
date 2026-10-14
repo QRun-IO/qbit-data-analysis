@@ -189,6 +189,7 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
             case DEFAULT -> "Using defaults";
             case OPTIONAL -> "Optional";
             case UNAVAILABLE -> "Unavailable";
+            case UNKNOWN -> "Needs attention";
          };
          data.getRows().add(values(part, state, item.detail(), item.nextStep()));
       }

@@ -34,6 +34,8 @@ import com.kingsrook.qbits.dataanalysis.DataAnalysisRuntime;
 import com.kingsrook.qbits.dataanalysis.engine.EffectiveConfig;
 import com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.UseTablePermissionCustomPermissionChecker;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -84,8 +86,9 @@ public final class TableConfigDefaultsProcess
 
 
    /*******************************************************************************
-    ** The process: a table-level action (no records need to be selected). Table
-    ** permissions (settings read and insert) are enforced by the steps.
+    ** The process: a table-level action (no records need to be selected). Only
+    ** people who may insert Analysis Settings see it; the steps enforce the table
+    ** permissions again.
     *******************************************************************************/
    public static QProcessMetaData process()
    {
@@ -101,7 +104,8 @@ public final class TableConfigDefaultsProcess
       process.setIcon(new QIcon("playlist_add"));
       process.setTableName(DataAnalysisTables.TABLE_CONFIG);
       process.setMinInputRecords(0);
-      process.setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED));
+      process.setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED)
+         .withCustomPermissionChecker(UseTablePermissionCustomPermissionChecker.build(DataAnalysisTables.TABLE_CONFIG, TablePermissionSubType.INSERT)));
       return (process);
    }
 
@@ -211,7 +215,7 @@ public final class TableConfigDefaultsProcess
       {
          for(QRecord record : input.getRecords())
          {
-            added.incrementCountAndAddPrimaryKey(record.getValue("table_name"));
+            added.incrementCount();
             output.getRecords().add(record);
          }
       }
@@ -259,7 +263,7 @@ public final class TableConfigDefaultsProcess
             {
                throw (new QException("Could not add analysis settings: " + record.getErrors()));
             }
-            created.incrementCountAndAddPrimaryKey(record.getValue("id"));
+            created.incrementCount();
             output.getRecords().add(record);
          }
          DataAnalysisRuntime.service().getConfigResolver().invalidate();

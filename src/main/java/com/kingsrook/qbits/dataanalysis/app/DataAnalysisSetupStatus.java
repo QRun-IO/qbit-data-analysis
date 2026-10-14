@@ -25,7 +25,6 @@ import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qbits.dataanalysis.DataAnalysisQBitConfig;
 import com.kingsrook.qbits.dataanalysis.DataAnalysisRuntime;
-import com.kingsrook.qbits.dataanalysis.engine.EffectiveConfig;
 import com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables;
 import com.kingsrook.qbits.dataanalysis.processes.TableConfigDefaultsProcess;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -48,7 +47,7 @@ public final class DataAnalysisSetupStatus
     *******************************************************************************/
    public enum State
    {
-      OK, DEFAULT, OPTIONAL, UNAVAILABLE
+      OK, DEFAULT, OPTIONAL, UNAVAILABLE, UNKNOWN
    }
 
 
@@ -109,11 +108,7 @@ public final class DataAnalysisSetupStatus
       /////////////////////////////////////////////////////////////////////
       // result cache: the resolved value, exactly what caching will use //
       /////////////////////////////////////////////////////////////////////
-      long cached = analyzable.stream().filter(table -> ttl(table) == 0).count(); // tables with caching off
-      items.add(!analyzable.isEmpty() && cached == analyzable.size()
-         ? new Item("Result cache", DataAnalysisTables.RUN, State.DEFAULT, "Off: every exact run computes fresh.", "Set cache minutes on Analysis Settings to reuse results.")
-         : new Item("Result cache", DataAnalysisTables.RUN, State.OK, "Exact results are reused for " + config.getDefaultCacheTtlMinutes()
-            + " minutes unless a table's settings row says otherwise" + (cached > 0 && config.getDefaultCacheTtlMinutes() > 0 ? " (" + cached + " tables have caching off)" : "") + ".", null));
+      items.add(cacheItem(analyzable, config));
 
       ///////////////////////////////////////////////////
       // saved analyses, watches, schedules: optional  //
@@ -144,19 +139,35 @@ public final class DataAnalysisSetupStatus
 
 
    /*******************************************************************************
-    ** The effective cache minutes for a table, as the run cache resolves them.
+    ** The Result cache line, from the minutes every analyzable table actually
+    ** resolves to (settings row, then table defaults, then the global default).
     *******************************************************************************/
-   private static int ttl(String table)
+   private static Item cacheItem(List<String> analyzable, DataAnalysisQBitConfig config)
    {
-      try
+      java.util.TreeMap<Integer, Integer> tablesPerMinutes = new java.util.TreeMap<>();
+      for(String table : analyzable)
       {
-         EffectiveConfig config = DataAnalysisRuntime.service().getConfigResolver().resolve(table);
-         return (config.getCacheTtlMinutes());
+         try
+         {
+            tablesPerMinutes.merge(DataAnalysisRuntime.service().getConfigResolver().resolve(table).getCacheTtlMinutes(), 1, Integer::sum);
+         }
+         catch(QException e)
+         {
+            return (new Item("Result cache", DataAnalysisTables.RUN, State.UNKNOWN, "The cache settings of " + table + " could not be read: " + e.getMessage(),
+               "Fix the settings row for that table (a negative limit is invalid)."));
+         }
       }
-      catch(QException e)
+      if(tablesPerMinutes.isEmpty() || (tablesPerMinutes.size() == 1 && tablesPerMinutes.firstKey() == 0))
       {
-         return (-1);
+         return (new Item("Result cache", DataAnalysisTables.RUN, State.DEFAULT, "Off: every exact run computes fresh.", "Set cache minutes on Analysis Settings to reuse results."));
       }
+      if(tablesPerMinutes.size() == 1)
+      {
+         return (new Item("Result cache", DataAnalysisTables.RUN, State.OK, "Exact results are reused for " + tablesPerMinutes.firstKey() + " minutes.", null));
+      }
+      String parts = tablesPerMinutes.entrySet().stream().map(e -> e.getValue() + (e.getValue() == 1 ? " table" : " tables") + (e.getKey() == 0 ? ": off" : ": " + e.getKey() + " min"))
+         .collect(java.util.stream.Collectors.joining(", "));
+      return (new Item("Result cache", DataAnalysisTables.RUN, State.OK, "Exact results are reused per table (default " + config.getDefaultCacheTtlMinutes() + " min): " + parts + ".", null));
    }
 
 }
