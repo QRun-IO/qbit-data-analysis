@@ -73,6 +73,10 @@ class DataAnalysisApiTest extends EngineFixture
             session.withPermission("orders.analyze");
          }
          session.withSecurityKeyValue("data_analysis_user", session.getUser().getIdReference());
+         if(session.getUuid().startsWith("watch-"))
+         {
+            session.getSecurityKeyValues().remove("data_analysis.admin");
+         }
       }
    }
 
@@ -169,7 +173,7 @@ class DataAnalysisApiTest extends EngineFixture
          assertThat(denied.getStatus()).isEqualTo(403);
          assertThat(run.path(operation.equals("COLUMN_PROFILE") ? "columnProfile" : "tableProfile").isObject()).isTrue();
       }
-      assertThat(invoker.listOperations().stream().filter(o -> o.pathTemplate().startsWith(DataAnalysisApi.PREFIX)).toList()).hasSize(13);
+      assertThat(invoker.listOperations().stream().filter(o -> o.pathTemplate().startsWith(DataAnalysisApi.PREFIX)).toList()).hasSize(14);
       var client = java.net.http.HttpClient.newHttpClient();
       var response = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://127.0.0.1:" + server.getBoundPort() + "/qqq/v1/openapi.json")).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
       assertThat(response.statusCode()).isEqualTo(200);
@@ -269,7 +273,7 @@ class DataAnalysisApiTest extends EngineFixture
    }
 
    /*******************************************************************************
-    ** Generated fragment is committed verbatim and has all thirteen operations.
+    ** Generated fragment is committed verbatim and has all fourteen operations.
     *******************************************************************************/
    @Test
    void contract() throws Exception
@@ -351,7 +355,7 @@ class DataAnalysisApiTest extends EngineFixture
       }
       relationshipCountDrills(call(HttpMethod.POST, "/tables/{table}/crosstab", Map.of("rowField", "status", "columnField", "customer"), 200));
       // All new schemas are discoverable from the same served OpenAPI catalog.
-      assertThat(com.kingsrook.qbits.dataanalysis.api.DataAnalysisApi.extension().getSemanticVersion()).isEqualTo("1.2.0");
+      assertThat(com.kingsrook.qbits.dataanalysis.api.DataAnalysisApi.extension().getSemanticVersion()).isEqualTo("1.3.0");
    }
 
    /*******************************************************************************
@@ -414,5 +418,38 @@ class DataAnalysisApiTest extends EngineFixture
             relationshipCountDrills(child);
          }
       }
+   }
+
+   @Test
+   void watchPreviewOverHttpIsReadOnlyAndOwnerLocked() throws Exception
+   {
+      caller = "watch-owner";
+      String owner = "User:" + Math.floorMod(caller.hashCode(), 10_000);
+      java.time.ZoneId zone = java.time.ZoneId.of("America/Chicago");
+      java.time.LocalDate today = java.time.LocalDate.now(zone);
+      for(int i = 0; i < 5; i++)
+      {
+         TestSupport.insert("orders", new com.kingsrook.qqq.backend.core.model.data.QRecord().withValue("id", 100 + i).withValue("customer", 1)
+            .withValue("created", today.minusDays(i < 2 ? 3 - i : 1).atTime(12, 0).atZone(zone).toInstant()));
+      }
+      var row = TestSupport.insert(com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables.WATCH,
+         WatchDetectorsTest.definition("SPIKE", "COUNT", "{\"k\":2}").withValue("owner_user_id", owner));
+      start();
+      var request = new UiApiRequest().withMethod(HttpMethod.POST).withPath(DataAnalysisApi.PREFIX + "/watches/{id}/preview")
+         .withPathParam("id", row.getValueString("id")).withSessionUUID(caller).withUserTimezone("America/Chicago");
+      var response = invoker.invoke(request);
+      assertThat(response.getStatus()).as(response.getBody()).isEqualTo(200);
+      JsonNode json = response.getJson();
+      assertThat(json.path("series").size()).isEqualTo(3);
+      assertThat(json.path("verdict").path("firing").asBoolean()).isTrue();
+      assertThat(json.path("verdict").path("value").asDouble()).isEqualTo(3);
+      assertThat(json.path("chart").path("kind").asText()).isEqualTo("TIME_SERIES");
+      assertThat(json.path("chart").path("annotations").toString()).contains("Baseline band");
+      checkDrills(json);
+      assertThat(com.kingsrook.qbits.dataanalysis.watch.WatchRecords.get(com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables.WATCH, row.getValue("id")).getValue("last_evaluated_at")).isNull();
+      assertThat(invoker.invoke(request.withSessionUUID("watch-outsider")).getStatus()).isEqualTo(404);
+      assertThat(invoker.invoke(request.withSessionUUID("denied")).getStatus()).isEqualTo(403);
+      assertThat(invoker.invoke(request.withSessionUUID(caller).withPathParam("id", "99999")).getStatus()).isEqualTo(404);
+      assertThat(invoker.invoke(request.withPathParam("id", "invalid")).getStatus()).isEqualTo(400);
    }
 }

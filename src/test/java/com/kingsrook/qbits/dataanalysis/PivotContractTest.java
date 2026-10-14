@@ -347,4 +347,22 @@ abstract class PivotContractTest extends EngineFixture
       equalNumber(result.getGrandTotals().getFirst(), "0");
       countDrills(result);
    }
+
+   @Test
+   void booleanHeadersAndHumanMeasureLabels() throws Exception
+   {
+      var booleans = service.pivot(pivot(List.of("paid"), List.of("status")));
+      assertThat(booleans.getRowHeaders().stream().flatMap(List::stream).map(PivotHeader::getLabel)).containsExactlyInAnyOrder("Yes", "No", "(Blank)");
+      assertThat(booleans.getMeasures().getFirst().getLabel()).isEqualTo("Count");
+      var operators = List.of(PivotMeasure.Operator.AVG, PivotMeasure.Operator.SUM, PivotMeasure.Operator.COUNT_DISTINCT,
+         PivotMeasure.Operator.MIN, PivotMeasure.Operator.MAX, PivotMeasure.Operator.PERCENTILE);
+      var measures = operators.stream().map(operator -> measure(operator, "amount")).toList();
+      measures.getLast().withPercentile(new BigDecimal("0.5"));
+      var result = service.pivot(pivot(List.of("paid"), List.of()).withValues(measures));
+      assertThat(result.getMeasures().stream().map(m -> m.getLabel())).containsExactly("Average Amount", "Sum of Amount", "Distinct Amount", "Minimum Amount", "Maximum Amount", "Median Amount");
+      measures.getLast().withPercentile(new BigDecimal("0.9"));
+      assertThat(service.pivot(pivot(List.of("paid"), List.of()).withValues(measures)).getMeasures().getLast().getLabel()).isEqualTo("90th percentile of Amount");
+      var cross = service.crosstab(new com.kingsrook.qbits.dataanalysis.result.CrosstabRequest().withTableName("orders").withRowField("paid").withColumnField("status"));
+      assertThat(cross.getRows().stream().map(PivotHeader::getLabel)).containsExactlyInAnyOrder("Yes", "No", "(Blank)");
+   }
 }

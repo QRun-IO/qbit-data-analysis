@@ -76,11 +76,11 @@ public class DataAnalysisApi
     *******************************************************************************/
    public static MiddlewareSpecExtension extension()
    {
-      return (new MiddlewareSpecExtension().withName("data-analysis").withSemanticVersion("1.2.0")
-         .withDescription("Profiles, pivots, comparisons, distribution shifts, correlations, scatter samples and crosstabs as the signed-in user.")
+      return (new MiddlewareSpecExtension().withName("data-analysis").withSemanticVersion("1.3.0")
+         .withDescription("Profiles, pivots, comparisons, distribution shifts, correlations, scatter samples, crosstabs and anomaly watch previews as the signed-in user.")
          .withSpec(CapabilitiesSpec.class).withSpec(ColumnProfileSpec.class).withSpec(DistinctValuesSpec.class)
          .withSpec(CompareSpec.class).withSpec(ShiftSpec.class).withSpec(CorrelationSpec.class).withSpec(ScatterSpec.class).withSpec(CrosstabSpec.class)
-         .withSpec(PivotSpec.class).withSpec(TableProfileSpec.class).withSpec(DuplicatesSpec.class).withSpec(StartRunSpec.class).withSpec(GetRunSpec.class));
+         .withSpec(WatchPreviewSpec.class).withSpec(PivotSpec.class).withSpec(TableProfileSpec.class).withSpec(DuplicatesSpec.class).withSpec(StartRunSpec.class).withSpec(GetRunSpec.class));
    }
 
    /*******************************************************************************
@@ -123,9 +123,9 @@ public class DataAnalysisApi
       @Override
       public List<Parameter> defineRequestParameters()
       {
-         String name = path.contains("{table}") ? "table" : path.contains("{runId}") ? "runId" : null;
+         String name = path.contains("{table}") ? "table" : path.contains("{runId}") ? "runId" : path.contains("{id}") ? "id" : null;
          return (name == null ? List.of() : List.of(new Parameter().withName(name).withIn(In.PATH).withRequired(true)
-            .withDescription(name.equals("table") ? "QQQ table name to analyze." : "Owner-scoped analysis run id.").withSchema(new Schema().withType(Type.STRING))));
+            .withDescription(name.equals("table") ? "QQQ table name to analyze." : "Owner-scoped analysis run or watch id.").withSchema(new Schema().withType(Type.STRING))));
       }
 
       /*******************************************************************************
@@ -755,6 +755,39 @@ public class DataAnalysisApi
          String tableName = input.getPathParam("table");
          CrosstabRequest request = relationshipRequest(tableName, input.getBody(), CrosstabRequest.class).withTableName(tableName);
          return (transport(DataAnalysisRuntime.service().crosstab(request), RelationshipSchemas.DataAnalysisCrosstabV1.class));
+      }
+   }
+
+   /*******************************************************************************
+    ** Read-only watch preview; standard table endpoints own watch CRUD.
+    *******************************************************************************/
+   public static class WatchPreviewSpec extends ProfileSpec
+   {
+      /*******************************************************************************
+       ** Publish a side-effect-free detector preview for a saved watch.
+       *******************************************************************************/
+      public WatchPreviewSpec()
+      {
+         super("/watches/{id}/preview", HttpMethod.POST, "Preview an anomaly watch",
+            "Compute complete time buckets and a detector verdict under the signed-in user's READ, Analyze and FULL-field permissions. Includes a baseline band annotation. Does not update the watch or raise alerts.", null, "WatchPreview");
+      }
+
+      /*******************************************************************************
+       ** Missing or inaccessible watch ids return the same not-found response.
+       *******************************************************************************/
+      @Override
+      protected Object handle(JsonInput input) throws Exception
+      {
+         Integer id;
+         try
+         {
+            id = Integer.valueOf(input.getPathParam("id"));
+         }
+         catch(NumberFormatException e)
+         {
+            throw new QBadRequestException("Watch id must be an integer.");
+         }
+         return (transport(DataAnalysisRuntime.watches().preview(id, java.time.Instant.now()), WatchSchemas.DataAnalysisWatchPreviewV1.class));
       }
    }
 }

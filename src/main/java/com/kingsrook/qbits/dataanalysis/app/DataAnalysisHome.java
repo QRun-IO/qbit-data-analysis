@@ -158,6 +158,27 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
          {
             html.append("<p>No watches yet.</p>");
          }
+         QueryInput watches = new QueryInput(DataAnalysisTables.WATCH).withShouldFetchHeavyFields(true)
+            .withFilter(new QQueryFilter().withOrderBy(new QFilterOrderBy("state", true)).withOrderBy(new QFilterOrderBy("id", false)).withLimit(5));
+         watches.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
+         List<QRecord> recent = new QueryAction().execute(watches).getRecords();
+         if(!recent.isEmpty())
+         {
+            html.append("<ul>");
+            for(QRecord watch : recent)
+            {
+               String path = QContext.getQInstance().getTablePath(DataAnalysisTables.WATCH) + "/" + watch.getValueInteger("id");
+               html.append("<li><a href=\"").append(escape(path)).append("\">")
+                  .append(escape(words(watch.getValueString("state")))).append(" &middot; ")
+                  .append(escape(words(watch.getValueString("detector")))).append("</a>");
+               if(watch.getValueString("last_message") != null)
+               {
+                  html.append(" — ").append(escape(watch.getValueString("last_message")));
+               }
+               html.append("</li>");
+            }
+            html.append("</ul>");
+         }
          link(html, DataAnalysisTables.WATCH);
       }
       else

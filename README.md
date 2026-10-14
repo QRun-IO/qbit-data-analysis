@@ -6,7 +6,7 @@ Statistical analysis and data dives on any QQQ table, filter or saved view: prof
 
 The host API provides column and table profiles, pivots, comparisons, distribution shifts, correlations, scatter samples, crosstabs, distinct-value pages, duplicate groups, drill-through filters, privacy suppression, and asynchronous exact profile runs with a persistent per-user cache. Metadata, six visible tables, owner locks, PostgreSQL DDL generation and the Analyses home are also available.
 
-Thirteen HTTP operations are available under `/qqq/v1/qbit/data-analysis`; the Analyze UI is a later phase. Pivot and relationship backends are available. Anomalies, saved-analysis execution, scheduling and exports remain later phases.
+Fourteen HTTP operations are available under `/qqq/v1/qbit/data-analysis`; the Analyze UI is a later phase. Pivot and relationship backends are available. Anomaly watches, their scheduled evaluator and alert transitions are available. Saved-analysis execution, scheduled delivery and exports remain later phases.
 
 ## Requirements
 
@@ -46,6 +46,8 @@ QQQ names and physical SQL table names are identical. `backendName` in configura
 | `data_analysis_run` | Analysis Runs: exact-run/cache result and history, scoped by user |
 
 Only Saved Analyses, Watches, Analysis Settings and Analysis Runs appear in navigation. Schedules, stars and linked watches appear on saved records. Enum PVS cover analysis kind, chart kind, detector, watch state, run status, schedule frequency and format. JSON definitions and results are stored as text. Profile, distinct-value and duplicate requests have typed Java contracts and are validated by the facade.
+
+The four `table_name` fields use core's `tables` possible-value source; an existing host source is preserved. A watch's `saved_id` options are filtered by its selected `table_name`. Analysis Settings' `analyzable_fields` and `excluded_fields` use a custom field picker scoped to the selected table. Core currently has no multi-select PVS field, so these settings use a single PVS with comma-separated TEXT storage (for example, `amount,status`); the configuration resolver continues to parse those lists. Explicit dependency metadata awaits core's `possibleValueSourceDependsOn` support.
 
 ## Permissions
 
@@ -138,7 +140,7 @@ Count drills combine an untouched copy of the request filter with their producin
 
 ## HTTP endpoints
 
-Extension `data-analysis` version **1.2.0**, prefix `/qbit/data-analysis` inside `/qqq/v1`:
+Extension `data-analysis` version **1.3.0**, prefix `/qbit/data-analysis` inside `/qqq/v1`:
 
 | Method | Path after `/qqq/v1` | Body or purpose |
 | --- | --- | --- |
@@ -155,10 +157,11 @@ Extension `data-analysis` version **1.2.0**, prefix `/qbit/data-analysis` inside
 | POST | `/qbit/data-analysis/tables/{table}/crosstab` | `{rowField, columnField, filter, limit}`; default/maximum 20 categories per axis plus Other |
 | POST | `/qbit/data-analysis/runs` | `{operation: COLUMN_PROFILE or TABLE_PROFILE, tableName, request}` returns `{runId, status}` |
 | GET | `/qbit/data-analysis/runs/{runId}` | Status, timestamps, error, typed `columnProfile` or `tableProfile` |
+| POST | `/qbit/data-analysis/watches/{id}/preview` | No body; complete bucket series, `TIME_SERIES` chart with baseline annotations and detector verdict; no writes or alerts |
 
 Every operation uses the request session through `DataAnalysisService`. Capabilities returns 200 with `canAnalyze: false` and no fields when denied. Other permission denials return 403, bad bodies or unavailable fields return 400, and unknown tables return 404. Core middleware supplies plain messages in its standard `{error: message}` JSON envelope. Run rows remain owner-locked.
 
-Requests and drills reuse core's `QueryFilter` JSON shape and schema reference. Versioned `DataAnalysis...V1` schemas cover profiles, metrics, drills, charts, series, points, field summaries, distinct and duplicate results, capabilities and runs. The [OpenAPI fragment](src/main/resources/openapi/qqq-v1/data-analysis.yaml) is checked against regeneration. The deployed `/qqq/v1/openapi.json` and `UiApiInvoker.listOperations()` include all eight operations.
+Requests and drills reuse core's `QueryFilter` JSON shape and schema reference. Versioned `DataAnalysis...V1` schemas cover profiles, metrics, drills, charts, series, points, field summaries, distinct and duplicate results, capabilities and runs. The [OpenAPI fragment](src/main/resources/openapi/qqq-v1/data-analysis.yaml) is checked against regeneration. The deployed `/qqq/v1/openapi.json` and `UiApiInvoker.listOperations()` include all fourteen operations.
 
 Regenerate deliberately after an API change:
 
@@ -202,6 +205,34 @@ Shift uses session-timezone calendar buckets. Only buckets whose end has passed 
 
 The minimum-group-size guard removes small numeric summaries, suppresses crosstab cells and revealing marginal shares, disables drills on privacy-merged Other groups, and suppresses scatter points below the minimum. Statistical tests and PSI are unavailable when protected values would contribute. No runtime statistics dependency is added; beta/gamma, Welch, chi-square, proportions, PSI and Pearson are pure Java, checked against independently computed SciPy references.
 
+## Anomaly watches
+
+Watches are ordinary owner-locked `data_analysis_watch` rows. Create and edit them through core table CRUD with `data_analysis.watch.read`, `.insert`, `.edit`, and `.delete`. Standard table/record actions **Evaluate now**, **Enable**, and **Disable** use streamed ETL Review and Result summaries. They never appear in navigation. The home lists firing watches first and links to their records.
+
+A watch has `owner_user_id`, `date_field`, `bucket` (`HOUR`, `DAY`, `WEEK`, `MONTH`), `detector`, `parameters_json`, `severity` (`INFO`, `WARNING`, `ERROR`, `CRITICAL`) and `enabled`. It targets either:
+
+- `table_name`, optional core `filter_json`, and `metric_json`, such as `{"operator":"COUNT"}`, `{"operator":"SUM","field":"amount"}`, `{"operator":"AVG","field":"amount"}`, `{"operator":"NULL_SHARE","field":"email"}`, or `{"operator":"CATEGORY_SET","field":"status"}`.
+- `saved_id`: the owner's saved table and filter, with an explicit watch `metric_json` or one saved definition `metric` / single pivot `values` measure. The date field and bucket remain explicit on the watch. Ambiguous saved measures are rejected; saved filters cannot be overridden by `filter_json` on the watch.
+
+Detector parameters are validated by core pre-insert/update customizers, including partial updates. Unknown parameters and invalid metric/detector combinations return clear record errors.
+
+| Detector | Parameters and behavior |
+| --- | --- |
+| SPIKE / DROP | `k=14`, `threshold=3.5`, `relativeChange=0.5`; robust z = `0.6745 * (latest - median) / MAD`, strict directional threshold. With zero MAD, compare relative change against the absolute median. A zero baseline fires only for a nonzero change in the requested direction. |
+| OUT_OF_RANGE | Required `min` and `max`; fire outside the inclusive range. Needs only the latest bucket. |
+| NEW_CATEGORY | `k=14`; requires `CATEGORY_SET`; compare latest categories with the union of previous buckets. Null is excluded from the category set. |
+| NULL_RATE_CREEP | `k=14`, `delta=0.05`, `n=3`; requires `NULL_SHARE`; fire for a rise above the baseline median greater than delta, or `n` consecutive increases (`n+1` values). |
+
+`k` and `n` are bounded to 1–1000. The trailing window contains at most `k+1` complete buckets, excludes the current bucket, and follows the owner's time zone (Monday-based weeks). Leading buckets with no observed rows do not invent history. After the first observed bucket, missing COUNT/SUM/category buckets are zero/empty; AVG and NULL_SHARE with no population are unavailable. Too little history, incomplete streamed results, unavailable fields, and privacy-suppressed buckets never cause a recovery. No suppressed series, categories, values or drills leave the computation. All source reads enforce READ, Analyze, record locks and FULL field access, including filter fields.
+
+`data_analysis_evaluate_watches` is hidden and repeats every 900 seconds when `schedulerName` is configured. Give the scheduler session its standard process permission, `data_analysis_evaluate_watches.hasAccess`. Inventory and status writes use grants restricted to watch rows; source aggregation always switches to the owner. The default integration calls the host authentication module's `createAutomatedSessionForUser`. Hosts can instead configure `withOwnerSessionSupplier(userId -> session)`. The session must identify that owner and include the `data_analysis_user` owner key plus their current permissions. Missing/mismatched sessions record **Owner session unavailable**; there is no system-session fallback. Manual Evaluate now can also evaluate a disabled watch.
+
+A transition from OK to FIRING raises through core `QAlerts`, with the watch record reference and a relative table-query `AlertLink`; recovery resolves the same `data_analysis_watch:<id>` key. The declared type is **`data.analysis.anomaly`**, labelled **Data anomaly**. This spelling is necessary because the supplied core SPI validator rejects the design's `data_analysis.anomaly` underscore. No qbit-alerts dependency is required. With no sink installed, core logs the signal and the watch row still records the outcome. Repeated FIRING/OK evaluations do not send duplicate transitions. Calls are serialized within each runtime; hosts should run this scheduler on one node (cross-node transactional coordination is not provided).
+
+`state`, `alert_key`, `last_evaluated_at`, `last_value` and `last_message` describe the most recent attempt. Skips clear the last value and leave the existing OK/FIRING state intact. Preview uses the requesting viewer's permissions and never updates these fields.
+
+`DataAnalysisSchema.postgresScript(config)` generates the new fields and owner requirement. Existing installations must add `date_field VARCHAR(250)`, `owner_user_id VARCHAR(250)`, `last_value NUMERIC`, and `last_message TEXT`, then backfill each watch's actual owner/date field before making the first two columns NOT NULL and enabling evaluation. The CREATE-IF-NOT-EXISTS generator does not migrate existing tables.
+
 ## Adopting in another app
 
 1. Add a backend, install the producer and run the usual `QInstanceValidator`.
@@ -210,7 +241,7 @@ The minimum-group-size guard removes small numeric summaries, suppresses crossta
 4. Review per-table include/exclude sets, limits and minimum group sizes before enabling analysis. Integrate Saved Analyses and Watches with host ESB/Quick Search when those optional host features are installed; this scaffold does not add those dependencies.
 5. Use the Analyses home as the owner of analysis data. Other dashboards should link there until saved-analysis widgets are implemented.
 
-Phase **b** profiles, drill-through, runs/cache and HTTP endpoints, phase **c** pivot backend, and phase **d** compare/relationships backend are implemented. Remaining work: **b** analysis UI; **c** pivot UI; **d** comparison/relationship UI; **e** watch evaluation and alerts; **f** saved-analysis execution, sharing, stars integration, schedules, chart widgets, full home and exports. The current home summarizes stored rows; the host facade executes profiles. The home does not send deliveries.
+Phase **b** profiles, drill-through, runs/cache and HTTP endpoints, phase **c** pivot backend, phase **d** compare/relationships backend, and phase **e** anomaly watches are implemented. Remaining work: **b** analysis UI; **c** pivot UI; **d** comparison/relationship UI; **f** saved-analysis execution, sharing, stars integration, schedules, chart widgets, full home and exports. The current home summarizes stored rows; the host facade executes profiles. The home does not send deliveries.
 
 ## Build
 
