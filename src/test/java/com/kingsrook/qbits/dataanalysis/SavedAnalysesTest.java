@@ -87,6 +87,23 @@ class SavedAnalysesTest extends EngineFixture
       assertThat(api.list()).isEmpty();
    }
 
+   /*******************************************************************************
+    ** A UI insert without an owner belongs to the inserting user; naming someone
+    ** else is still refused for a non-administrator.
+    *******************************************************************************/
+   @Test
+   void insertWithoutOwnerBelongsToTheCurrentUser() throws Exception
+   {
+      QContext.init(instance, viewer("bob", 2));
+      QRecord row = definition("bob", false, "COLUMN_PROFILE", Map.of("fieldName", "amount"));
+      row.removeValue("owner_user_id");
+      QRecord inserted = new InsertAction().execute(new InsertInput(DataAnalysisTables.SAVED).withRecords(List.of(row))).getRecords().getFirst();
+      assertThat(inserted.getErrors()).isEmpty();
+      assertThat(inserted.getValueString("owner_user_id")).isEqualTo("bob");
+      QRecord forged = definition("alice", false, "COLUMN_PROFILE", Map.of("fieldName", "amount"));
+      assertThat(new InsertAction().execute(new InsertInput(DataAnalysisTables.SAVED).withRecords(List.of(forged))).getRecords().getFirst().getErrors()).isNotEmpty();
+   }
+
    @Test
    void starsAreIdempotentAndPersonal() throws Exception
    {

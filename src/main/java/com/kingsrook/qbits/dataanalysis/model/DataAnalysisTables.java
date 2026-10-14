@@ -237,7 +237,7 @@ public final class DataAnalysisTables
          .withField(field("kind", QFieldType.STRING).withPossibleValueSourceName("data_analysis_kind").withIsRequired(true))
          .withField(field("definition_json", QFieldType.TEXT).withIsRequired(true))
          .withField(field("chart_kind", QFieldType.STRING).withPossibleValueSourceName("data_analysis_chart_kind"))
-         .withField(field("owner_user_id", QFieldType.STRING).withIsRequired(true))
+         .withField(field("owner_user_id", QFieldType.STRING).withIsRequired(true).withBehavior(InsertingUserBehavior.INSERTING_USER))
          .withField(field("shared", QFieldType.BOOLEAN).withDefaultValue(false))
          .withField(field("read_owner_user_id", QFieldType.STRING).withIsEditable(false).withIsHidden(true))
          .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD))
@@ -251,7 +251,7 @@ public final class DataAnalysisTables
       tables.add(base(config, SAVED_STAR, "Stars", "star", "data_analysis.saved")
          .withRecordLabelFormatAndFields("%s", "user_id")
          .withField(field("saved_id", QFieldType.INTEGER).withPossibleValueSourceName("data_analysis_saved").withIsRequired(true))
-         .withField(field("user_id", QFieldType.STRING).withIsRequired(true))
+         .withField(field("user_id", QFieldType.STRING).withIsRequired(true).withBehavior(InsertingUserBehavior.INSERTING_USER))
          .withUniqueKey(new UniqueKey("saved_id", "user_id"))
          .withRecordSecurityLock(ownerLock("user_id")));
       tables.add(base(config, SCHEDULE, "Schedules", "schedule", "data_analysis.saved")
@@ -285,7 +285,7 @@ public final class DataAnalysisTables
          .withField(field("date_field", QFieldType.STRING).withIsRequired(true))
          .withField(field("bucket", QFieldType.STRING).withDefaultValue("DAY").withIsRequired(true).withPossibleValueSourceName("data_analysis_watch_bucket"))
          .withField(field("severity", QFieldType.STRING).withDefaultValue("WARNING").withIsRequired(true).withPossibleValueSourceName("data_analysis_watch_severity"))
-         .withField(field("owner_user_id", QFieldType.STRING).withIsRequired(true))
+         .withField(field("owner_user_id", QFieldType.STRING).withIsRequired(true).withBehavior(InsertingUserBehavior.INSERTING_USER))
          .withField(field("enabled", QFieldType.BOOLEAN).withDefaultValue(false))
          .withField(field("last_evaluated_at", QFieldType.DATE_TIME).withIsEditable(false))
          .withField(field("last_value", QFieldType.DECIMAL).withIsEditable(false))
@@ -311,7 +311,7 @@ public final class DataAnalysisTables
          .withField(field("sampled", QFieldType.BOOLEAN).withDefaultValue(false))
          .withField(field("result_json", QFieldType.TEXT))
          .withField(field("error", QFieldType.TEXT))
-         .withField(field("user_id", QFieldType.STRING).withIsRequired(true))
+         .withField(field("user_id", QFieldType.STRING).withIsRequired(true).withBehavior(InsertingUserBehavior.INSERTING_USER))
          .withRecordSecurityLock(ownerLock("user_id")));
       for(QTableMetaData table : tables)
       {
