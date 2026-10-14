@@ -29,6 +29,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.permissions.TableFeaturePer
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.TableFeaturePermissionsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaDataProducer;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.TablesPossibleValueSourceMetaDataProvider;
 
 
 /*******************************************************************************
@@ -129,9 +130,20 @@ public class DataAnalysisQBitProducer implements QBitMetaDataProducer<DataAnalys
    public MetaDataProducerMultiOutput produce(QInstance instance) throws QException
    {
       qBitConfig.validate(instance);
+      if(instance.getPossibleValueSource(TablesPossibleValueSourceMetaDataProvider.NAME) == null)
+      {
+         instance.addPossibleValueSource(TablesPossibleValueSourceMetaDataProvider.defineTablesPossibleValueSource(instance));
+      }
       MetaDataProducerMultiOutput output = QBitMetaDataProducer.super.produce(instance);
       output.addSelfToInstance(instance);
       new DataAnalysisRuntime(qBitConfig).addSelfToInstance(instance);
+      com.kingsrook.qqq.backend.core.alerts.AlertsInstanceMetaData.ofOrWithNew(instance).withAlertType(
+         new com.kingsrook.qqq.backend.core.alerts.QAlertTypeMetaData().withName(com.kingsrook.qbits.dataanalysis.watch.WatchEvaluator.ALERT_TYPE)
+            .withLabel("Data anomaly").withSourceName(ARTIFACT_ID).withGroupName("data-analysis")
+            .withDefaultSeverity(com.kingsrook.qqq.backend.core.alerts.AlertSeverity.WARNING)
+            .withResolveMode(com.kingsrook.qqq.backend.core.alerts.ResolveMode.PRODUCER)
+            .withSubjectTableName(com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables.WATCH)
+            .withVisibilityPermission("data_analysis.watch.read"));
       var included = java.util.Set.copyOf(qBitConfig.getIncludeTables());
       var excluded = java.util.Set.copyOf(qBitConfig.getExcludeTables());
       TableFeaturePermissionsMetaData.ofOrWithNew(instance).withPermission(new TableFeaturePermission()

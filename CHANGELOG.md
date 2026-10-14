@@ -6,6 +6,12 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 
 ### Added
 
+- Phase e anomaly watches: owner-locked configuration, validated metrics/detector parameters, complete calendar buckets, five pure detectors, and scheduled evaluation through owner sessions.
+- Core alerts SPI type `data.analysis.anomaly` (core disallows the spec's underscore), stable watch keys, relative drill links, raise/recovery transitions, and persisted outcomes without an alerts implementation.
+- Standard streamed ETL Evaluate now / Enable / Disable record actions and firing-first linked watches on the Analyses home.
+- Read-only watch preview HTTP endpoint, semantic chart/baseline annotations, extension 1.3.0 and regenerated OpenAPI fragment.
+- Detector edge cases, real-row owner/security/alert transition tests, calendar boundary and action tests, and HTTP preview coverage.
+
 - Phase d compare, shift, correlation, scatter and crosstab service operations and HTTP specs; extension version 1.2.0 with typed `DataAnalysis*V1` schemas and regenerated OpenAPI.
 - Pure-Java two-proportion, Welch, chi-square/Cramer V, PSI and Pearson statistics, including regularized incomplete beta/gamma and independent SciPy references.
 - Core-pushed numeric moments and batched correlations, sample trend lines, calendar distribution shifts, category pooling, privacy suppression and exact count drills.
@@ -22,6 +28,9 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 - HTTP authorization, drill-to-core-count round trips, async polling, served OpenAPI and assistant discovery tests; H2 streamed and native-compatibility contract variants.
 
 ### Changed
+
+- Boolean pivot/crosstab headers now say Yes / No / (Blank). Pivot measures use human labels such as Count, Average Amount, Sum of Amount, Distinct Email, Median Amount and 90th percentile of Amount.
+- Watch DDL includes owner/date fields and last value/message; existing databases need an owner/date backfill before enabling watches.
 
 - Scalable estimates sample each native aggregate without primary-key IN lists, scale counts using observed sample sizes, retain exact population totals and unscaled ratios, and drill over the full population. Portable estimates use one primary-key boundary and report unscaled prefix counts.
 

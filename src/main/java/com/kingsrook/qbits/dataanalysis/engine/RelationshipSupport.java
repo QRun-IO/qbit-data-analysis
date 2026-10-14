@@ -177,7 +177,7 @@ public class RelationshipSupport extends StandInAnalysisBackend
          Serializable value = row.getGroupByValues().get(group);
          long n = ((Number) row.getAggregateValues().get(count)).longValue();
          boolean hidden = n < config.getMinGroupSize();
-         Category category = new Category(value, hidden ? "Other" : value == null ? "(blank)" : security.label(metadata, value),
+         Category category = new Category(value, hidden ? "Other" : value == null ? "(Blank)" : security.label(metadata, value),
             DrillFilters.value(field, value, metadata.getType() == QFieldType.STRING), hidden);
          if(hidden || result.size() >= limit)
          {

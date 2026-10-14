@@ -338,4 +338,17 @@ public class DataAnalysisService
       validate(request);
       return (new ShiftExplorer(security, configs.resolve(request.getTableName()), request.getTableName()).shift(request));
    }
+
+   /*******************************************************************************
+    ** Watch aggregates use the same current-user table and FULL-field policy.
+    *******************************************************************************/
+   public com.kingsrook.qbits.dataanalysis.watch.WatchPreview watchPreview(com.kingsrook.qqq.backend.core.model.data.QRecord row, java.time.Instant now) throws QException
+   {
+      var resolved = com.kingsrook.qbits.dataanalysis.watch.WatchRecords.resolve(row);
+      String table = resolved.getValueString("table_name");
+      security.table(table);
+      var definition = com.kingsrook.qbits.dataanalysis.watch.WatchDefinition.parse(resolved);
+      return (new com.kingsrook.qbits.dataanalysis.watch.WatchSeries(security, configs.resolve(table), table)
+         .preview(definition, com.kingsrook.qbits.dataanalysis.watch.WatchRecords.filter(resolved), now));
+   }
 }

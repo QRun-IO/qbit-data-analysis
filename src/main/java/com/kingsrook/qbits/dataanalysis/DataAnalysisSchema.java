@@ -83,6 +83,7 @@ public final class DataAnalysisSchema
       {
          case INTEGER -> "INTEGER";
          case LONG -> "BIGINT";
+         case DECIMAL -> "NUMERIC";
          case BOOLEAN -> "BOOLEAN";
          case DATE_TIME -> "TIMESTAMP WITHOUT TIME ZONE";
          case TEXT -> "TEXT";

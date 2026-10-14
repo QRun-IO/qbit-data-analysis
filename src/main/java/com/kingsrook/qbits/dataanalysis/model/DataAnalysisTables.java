@@ -29,8 +29,12 @@ import com.kingsrook.qbits.dataanalysis.DataAnalysisQBitConfig;
 import com.kingsrook.qbits.dataanalysis.permissions.DataAnalysisPermissions;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ChildRecordListRenderer;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -49,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.ExposedJoin;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.SectionFactory;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.TablesPossibleValueSourceMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 
@@ -111,10 +116,15 @@ public final class DataAnalysisTables
    public static List<QPossibleValueSource> possibleValueSources()
    {
       List<QPossibleValueSource> sources = new ArrayList<>();
+      sources.add(new QPossibleValueSource().withName(DataAnalysisFieldPossibleValueProvider.NAME)
+         .withType(QPossibleValueSourceType.CUSTOM).withIdType(QFieldType.STRING)
+         .withCustomCodeReference(new QCodeReference(DataAnalysisFieldPossibleValueProvider.class)));
       sources.add(enumSource("kind", "COLUMN_PROFILE", "TABLE_PROFILE", "PIVOT", "COMPARE", "CORRELATION", "CROSSTAB", "SHIFT"));
       sources.add(enumSource("chart_kind", "HISTOGRAM", "BOX", "BAR", "PARETO", "TIME_SERIES", "SCATTER", "HEATMAP"));
       sources.add(enumSource("detector", "SPIKE", "DROP", "OUT_OF_RANGE", "NEW_CATEGORY", "NULL_RATE_CREEP"));
       sources.add(enumSource("watch_state", "OK", "FIRING"));
+      sources.add(enumSource("watch_bucket", "HOUR", "DAY", "WEEK", "MONTH"));
+      sources.add(enumSource("watch_severity", "INFO", "WARNING", "ERROR", "CRITICAL"));
       sources.add(enumSource("run_status", "RUNNING", "COMPLETE", "FAILED"));
       sources.add(enumSource("schedule_frequency", "DAILY", "WEEKLY", "MONTHLY"));
       sources.add(enumSource("schedule_format", "HTML_SUMMARY", "CSV", "XLSX"));
@@ -205,14 +215,16 @@ public final class DataAnalysisTables
       List<QTableMetaData> tables = new ArrayList<>();
       tables.add(base(config, TABLE_CONFIG, "Analysis Settings", "settings", "data_analysis.settings")
          .withRecordLabelFormatAndFields("%s", "table_name")
-         .withField(field("table_name", QFieldType.STRING).withIsRequired(true))
+         .withField(field("table_name", QFieldType.STRING).withPossibleValueSourceName(TablesPossibleValueSourceMetaDataProvider.NAME).withIsRequired(true))
          .withField(field("enabled", QFieldType.BOOLEAN).withDefaultValue(true))
          .withField(field("max_rows", QFieldType.INTEGER))
          .withField(field("sample_threshold_rows", QFieldType.INTEGER))
          .withField(field("sample_rows", QFieldType.INTEGER))
          .withField(field("min_group_size", QFieldType.INTEGER))
-         .withField(field("analyzable_fields", QFieldType.TEXT))
-         .withField(field("excluded_fields", QFieldType.TEXT))
+         // add possibleValueSourceDependsOn("table_name") once core has it
+         .withField(field("analyzable_fields", QFieldType.TEXT).withPossibleValueSourceName(DataAnalysisFieldPossibleValueProvider.NAME))
+         // add possibleValueSourceDependsOn("table_name") once core has it
+         .withField(field("excluded_fields", QFieldType.TEXT).withPossibleValueSourceName(DataAnalysisFieldPossibleValueProvider.NAME))
          .withField(field("cache_ttl_minutes", QFieldType.INTEGER))
          .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD))
          .withUniqueKey(new UniqueKey("table_name")));
@@ -220,7 +232,7 @@ public final class DataAnalysisTables
          .withRecordLabelFormatAndFields("%s", "name")
          .withField(field("name", QFieldType.STRING).withIsRequired(true))
          .withField(field("description", QFieldType.TEXT))
-         .withField(field("table_name", QFieldType.STRING).withIsRequired(true))
+         .withField(field("table_name", QFieldType.STRING).withPossibleValueSourceName(TablesPossibleValueSourceMetaDataProvider.NAME).withIsRequired(true))
          .withField(field("filter_json", QFieldType.TEXT))
          .withField(field("kind", QFieldType.STRING).withPossibleValueSourceName("data_analysis_kind").withIsRequired(true))
          .withField(field("definition_json", QFieldType.TEXT).withIsRequired(true))
@@ -252,21 +264,31 @@ public final class DataAnalysisTables
          .withRecordSecurityLock(ownerLock(SAVED + ".owner_user_id").withJoinNameChain(List.of(joinName(SCHEDULE)))));
       tables.add(base(config, WATCH, "Watches", "notifications_active", "data_analysis.watch")
          .withRecordLabelFormatAndFields("%s", "detector")
-         .withField(field("saved_id", QFieldType.INTEGER).withPossibleValueSourceName("data_analysis_saved"))
-         .withField(field("table_name", QFieldType.STRING))
+         .withField(field("saved_id", QFieldType.INTEGER).withPossibleValueSourceName("data_analysis_saved")
+            .withPossibleValueSourceFilter(new QQueryFilter(new QFilterCriteria("table_name", QCriteriaOperator.EQUALS, "${input.table_name}"))))
+         .withField(field("table_name", QFieldType.STRING).withPossibleValueSourceName(TablesPossibleValueSourceMetaDataProvider.NAME))
          .withField(field("filter_json", QFieldType.TEXT))
          .withField(field("metric_json", QFieldType.TEXT))
          .withField(field("detector", QFieldType.STRING).withPossibleValueSourceName("data_analysis_detector").withIsRequired(true))
          .withField(field("parameters_json", QFieldType.TEXT))
-         .withField(field("bucket", QFieldType.STRING))
-         .withField(field("severity", QFieldType.STRING))
+         .withField(field("date_field", QFieldType.STRING).withIsRequired(true))
+         .withField(field("bucket", QFieldType.STRING).withDefaultValue("DAY").withIsRequired(true).withPossibleValueSourceName("data_analysis_watch_bucket"))
+         .withField(field("severity", QFieldType.STRING).withDefaultValue("WARNING").withIsRequired(true).withPossibleValueSourceName("data_analysis_watch_severity"))
+         .withField(field("owner_user_id", QFieldType.STRING).withIsRequired(true))
          .withField(field("enabled", QFieldType.BOOLEAN).withDefaultValue(false))
-         .withField(field("last_evaluated_at", QFieldType.DATE_TIME))
-         .withField(field("state", QFieldType.STRING).withDefaultValue("OK").withPossibleValueSourceName("data_analysis_watch_state"))
-         .withField(field("alert_key", QFieldType.STRING)));
+         .withField(field("last_evaluated_at", QFieldType.DATE_TIME).withIsEditable(false))
+         .withField(field("last_value", QFieldType.DECIMAL).withIsEditable(false))
+         .withField(field("last_message", QFieldType.TEXT).withIsEditable(false))
+         .withField(field("state", QFieldType.STRING).withDefaultValue("OK").withIsEditable(false).withPossibleValueSourceName("data_analysis_watch_state"))
+         .withField(field("alert_key", QFieldType.STRING).withIsEditable(false))
+         .withRecordSecurityLock(ownerLock("owner_user_id"))
+         .withCustomizer(com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers.PRE_INSERT_RECORD,
+            new com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference(com.kingsrook.qbits.dataanalysis.watch.WatchCustomizer.class))
+         .withCustomizer(com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers.PRE_UPDATE_RECORD,
+            new com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference(com.kingsrook.qbits.dataanalysis.watch.WatchCustomizer.class)));
       tables.add(base(config, RUN, "Analysis Runs", "history", "data_analysis.run")
          .withRecordLabelFormatAndFields("%s", "operation")
-         .withField(field("table_name", QFieldType.STRING).withIsRequired(true))
+         .withField(field("table_name", QFieldType.STRING).withPossibleValueSourceName(TablesPossibleValueSourceMetaDataProvider.NAME).withIsRequired(true))
          .withField(field("operation", QFieldType.STRING).withIsRequired(true))
          .withField(field("request_hash", QFieldType.STRING))
          .withField(field("filter_hash", QFieldType.STRING))

@@ -90,9 +90,9 @@ class DataAnalysisHomeTest
       TestSupport.insert(DataAnalysisTables.SAVED_STAR, new QRecord().withValue("saved_id", mine.getValue("id")).withValue("user_id", "alice"));
       TestSupport.insert(DataAnalysisTables.SAVED_STAR, new QRecord().withValue("saved_id", bob.getValue("id")).withValue("user_id", "alice"));
       TestSupport.insert(DataAnalysisTables.SAVED_STAR, new QRecord().withValue("saved_id", mine.getValue("id")).withValue("user_id", "bob"));
-      TestSupport.insert(DataAnalysisTables.WATCH, new QRecord().withValue("detector", "SPIKE").withValue("enabled", true).withValue("state", "FIRING"));
-      TestSupport.insert(DataAnalysisTables.WATCH, new QRecord().withValue("detector", "DROP").withValue("enabled", true));
-      TestSupport.insert(DataAnalysisTables.WATCH, new QRecord().withValue("detector", "DROP").withValue("enabled", false));
+      TestSupport.insert(DataAnalysisTables.WATCH, WatchDetectorsTest.definition("SPIKE", "COUNT", null).withValue("enabled", true).withValue("state", "FIRING"));
+      TestSupport.insert(DataAnalysisTables.WATCH, WatchDetectorsTest.definition("DROP", "COUNT", null).withValue("enabled", true));
+      TestSupport.insert(DataAnalysisTables.WATCH, WatchDetectorsTest.definition("DROP", "COUNT", null).withValue("enabled", false));
       run("alice", "COMPLETE", now);
       run("alice", "COMPLETE", now.minus(7, ChronoUnit.DAYS));
       run("alice", "FAILED", now.minus(1, ChronoUnit.DAYS));

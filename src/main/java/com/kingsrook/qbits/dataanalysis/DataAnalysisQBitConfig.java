@@ -39,6 +39,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitConfig;
 public class DataAnalysisQBitConfig implements QBitConfig
 {
    private Supplier<FieldAnalysisAccessResolver> fieldAnalysisAccessResolver = CoreTierFieldAccessResolver::defaultResolver;
+   private transient java.util.function.Function<String, com.kingsrook.qqq.backend.core.model.session.QSession> ownerSessionSupplier;
    private String backendName;
    private String schedulerName;
    private String appName = "dataAnalysis";
@@ -406,6 +407,23 @@ public class DataAnalysisQBitConfig implements QBitConfig
    public DataAnalysisQBitConfig withFieldAnalysisAccessResolver(Supplier<FieldAnalysisAccessResolver> resolver)
    {
       this.fieldAnalysisAccessResolver = java.util.Objects.requireNonNull(resolver);
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Optional host adapter for scheduled owner permissions and record-lock keys.
+    *******************************************************************************/
+   public java.util.function.Function<String, com.kingsrook.qqq.backend.core.model.session.QSession> getOwnerSessionSupplier()
+   {
+      return (ownerSessionSupplier);
+   }
+
+   /*******************************************************************************
+    ** Without an adapter, use the host authentication module's automated session.
+    *******************************************************************************/
+   public DataAnalysisQBitConfig withOwnerSessionSupplier(java.util.function.Function<String, com.kingsrook.qqq.backend.core.model.session.QSession> supplier)
+   {
+      ownerSessionSupplier = supplier;
       return (this);
    }
 }

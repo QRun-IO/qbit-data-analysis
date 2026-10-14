@@ -85,6 +85,10 @@ public final class AnalysisLabels
       {
          return (null);
       }
+      if(field.getType() == com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType.BOOLEAN)
+      {
+         return (com.kingsrook.qqq.backend.core.utils.ValueUtils.getValueAsBoolean(value) ? "Yes" : "No");
+      }
       String fallback = value.toString();
       QPossibleValueSource source = QContext.getQInstance().getPossibleValueSource(field.getPossibleValueSourceName());
       if(source == null || visited.size() >= 8 || !visited.add(source.getName()))

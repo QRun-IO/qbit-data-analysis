@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaDa
 public class DataAnalysisRuntime implements QSupplementalInstanceMetaData
 {
    private final transient DataAnalysisService service;
+   private final transient com.kingsrook.qbits.dataanalysis.watch.WatchEvaluator watches;
 
    /*******************************************************************************
     ** Create a runtime for one configured instance.
@@ -37,6 +38,7 @@ public class DataAnalysisRuntime implements QSupplementalInstanceMetaData
    public DataAnalysisRuntime(DataAnalysisQBitConfig config)
    {
       service = new DataAnalysisService(config);
+      watches = new com.kingsrook.qbits.dataanalysis.watch.WatchEvaluator(config, service);
    }
 
 
@@ -69,5 +71,13 @@ public class DataAnalysisRuntime implements QSupplementalInstanceMetaData
    public static DataAnalysisService service()
    {
       return (((DataAnalysisRuntime) QContext.getQInstance().getSupplementalMetaData("dataAnalysisRuntime")).getService());
+   }
+
+   /*******************************************************************************
+    ** Shared evaluator serializes manual and scheduled watch transitions.
+    *******************************************************************************/
+   public static com.kingsrook.qbits.dataanalysis.watch.WatchEvaluator watches()
+   {
+      return (((DataAnalysisRuntime) QContext.getQInstance().getSupplementalMetaData("dataAnalysisRuntime")).watches);
    }
 }

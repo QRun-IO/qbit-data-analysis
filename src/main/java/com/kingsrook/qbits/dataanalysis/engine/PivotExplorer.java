@@ -326,7 +326,42 @@ public class PivotExplorer
       measures.add(aggregate);
       ValueType type = operator == PivotMeasure.Operator.COUNT || operator == PivotMeasure.Operator.COUNT_DISTINCT ? ValueType.COUNT
          : numeric(field) ? ValueType.DECIMAL : field.getType() == QFieldType.DATE ? ValueType.DATE : field.getType() == QFieldType.DATE_TIME ? ValueType.DATE_TIME : ValueType.TEXT;
-      measureInfo.add(new PivotMeasureInfo().withKey("value" + index).withLabel(operator.name() + (field == null ? " records" : " " + field.getLabel())).withValueType(type));
+      measureInfo.add(new PivotMeasureInfo().withKey("value" + index).withLabel(measureLabel(measure, field)).withValueType(type));
+   }
+
+   /*******************************************************************************
+    ** Human measure labels shared by headers, totals and cells.
+    *******************************************************************************/
+   private static String measureLabel(PivotMeasure measure, QFieldMetaData field)
+   {
+      String label = field == null ? "" : field.getLabel();
+      return (switch(measure.getOperator())
+      {
+         case COUNT -> "Count";
+         case AVG -> "Average " + label;
+         case SUM -> "Sum of " + label;
+         case COUNT_DISTINCT -> "Distinct " + label;
+         case MIN -> "Minimum " + label;
+         case MAX -> "Maximum " + label;
+         case PERCENTILE -> measure.getPercentile().compareTo(new BigDecimal("0.5")) == 0 ? "Median " + label
+            : ordinal(measure.getPercentile().multiply(BigDecimal.valueOf(100))) + " percentile of " + label;
+      });
+   }
+
+   /*******************************************************************************
+    ** English ordinal suffixes, including the eleventh through thirteenth.
+    *******************************************************************************/
+   private static String ordinal(BigDecimal value)
+   {
+      int number = value.intValue();
+      String suffix = number % 100 >= 11 && number % 100 <= 13 ? "th" : switch(number % 10)
+      {
+         case 1 -> "st";
+         case 2 -> "nd";
+         case 3 -> "rd";
+         default -> "th";
+      };
+      return (value.stripTrailingZeros().toPlainString() + suffix);
    }
 
    /*******************************************************************************
