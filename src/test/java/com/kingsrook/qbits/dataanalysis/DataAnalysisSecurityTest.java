@@ -125,7 +125,7 @@ class DataAnalysisSecurityTest
    }
 
    /*******************************************************************************
-    ** Saved, star and run locks hide others even when the shared flag is true.
+    ** Shared saved rows are readable; private stars, schedules and runs remain owner-locked.
     *******************************************************************************/
    @Test
    void ownerIsolation() throws Exception
@@ -142,12 +142,12 @@ class DataAnalysisSecurityTest
       TestSupport.insert(DataAnalysisTables.SCHEDULE, new QRecord().withValue("saved_id", mine.getValue("id")));
       TestSupport.insert(DataAnalysisTables.SCHEDULE, new QRecord().withValue("saved_id", other.getValue("id")));
       QContext.init(instance, TestSupport.user("alice").withPermissions("data_analysis.saved.read", "data_analysis.run.read"));
-      assertThat(query(DataAnalysisTables.SAVED)).extracting(r -> r.getValueString("owner_user_id")).containsExactly("alice");
+      assertThat(query(DataAnalysisTables.SAVED)).extracting(r -> r.getValueString("owner_user_id")).containsExactly("alice", "bob");
       assertThat(query(DataAnalysisTables.SAVED_STAR)).extracting(r -> r.getValueString("user_id")).containsExactly("alice");
       assertThat(query(DataAnalysisTables.RUN)).extracting(r -> r.getValueString("user_id")).containsExactly("alice");
       assertThat(query(DataAnalysisTables.SCHEDULE)).extracting(r -> r.getValue("saved_id")).containsExactly(mine.getValue("id"));
       QContext.init(instance, TestSupport.user("alice").withPermissions("data_analysis.saved.read", "data_analysis.admin"));
-      assertThat(query(DataAnalysisTables.SAVED)).hasSize(1);
+      assertThat(query(DataAnalysisTables.SAVED)).hasSize(2);
       QContext.getQSession().withSecurityKeyValue("data_analysis.admin", true);
       assertThat(query(DataAnalysisTables.SAVED)).hasSize(2);
    }

@@ -20,35 +20,35 @@
 
 package com.kingsrook.qbits.dataanalysis.app;
 
-
 import java.time.Instant;
-import java.util.Arrays;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.stream.Collectors;
+import java.util.Map;
+import java.util.Objects;
 import com.kingsrook.qbits.dataanalysis.DataAnalysisQBitConfig;
-import com.kingsrook.qbits.dataanalysis.engine.AnalysisFormatting;
+import com.kingsrook.qbits.dataanalysis.DataAnalysisRuntime;
+import com.kingsrook.qbits.dataanalysis.engine.DrillFilters;
 import com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables;
+import com.kingsrook.qbits.dataanalysis.saved.SavedAnalyses;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.AbstractWidgetRenderer;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
-import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
-import com.kingsrook.qqq.backend.core.model.dashboard.widgets.RawHTML;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.MultiStatisticsData;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.QWidgetData;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.TableData;
 import com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType;
-import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
@@ -58,35 +58,49 @@ import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
-
 /*******************************************************************************
- ** Analyses app home: real counts under the current user's permissions and locks.
+ ** Standard QQQ statistics and narrow table widgets, all queried as the viewer.
  *******************************************************************************/
 public class DataAnalysisHome extends AbstractWidgetRenderer
 {
    public static final String HOME_WIDGET = "dataAnalysisHome";
-
-
+   public static final String STARRED = "dataAnalysisStarred";
+   public static final String FIRING = "dataAnalysisFiring";
+   public static final String RECENT = "dataAnalysisRecent";
 
    /*******************************************************************************
-    ** The home itself has no data privilege; each section checks its table READ.
+    ** The existing home name now supplies standard multi-statistics data.
     *******************************************************************************/
    public static QWidgetMetaData widget()
    {
-      return (new QWidgetMetaData().withName(HOME_WIDGET).withLabel("Overview").withType(WidgetType.HTML.getType())
-         .withCodeReference(new QCodeReference(DataAnalysisHome.class)).withGridColumns(12).withIsCard(false)
+      return (widget(HOME_WIDGET, "Analysis overview", WidgetType.MULTI_STATISTICS));
+   }
+
+   /*******************************************************************************
+    ** Full-width tables have three or four columns and honest empty states.
+    *******************************************************************************/
+   public static List<QWidgetMetaData> widgets()
+   {
+      return (List.of(widget(), widget(STARRED, "Starred analyses", WidgetType.TABLE), widget(FIRING, "Firing watches", WidgetType.TABLE), widget(RECENT, "My recent runs", WidgetType.TABLE)));
+   }
+
+   /*******************************************************************************
+    ** The widget itself grants no privilege; each data section checks table READ.
+    *******************************************************************************/
+   private static QWidgetMetaData widget(String name, String label, WidgetType type)
+   {
+      return (new QWidgetMetaData().withName(name).withLabel(label).withType(type.getType()).withGridColumns(12).withIsCard(true)
+         .withShowReloadButton(true).withCodeReference(new QCodeReference(DataAnalysisHome.class))
          .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED)));
    }
 
-
-
    /*******************************************************************************
-    ** Only main tables appear in navigation; schedules and stars are record children.
+    ** Main tables remain navigation; schedules and stars remain child lists.
     *******************************************************************************/
    public static QAppMetaData app(DataAnalysisQBitConfig config, List<QTableMetaData> tables)
    {
       QAppMetaData app = new QAppMetaData().withName(config.getAppName()).withLabel(config.getAppLabel())
-         .withIcon(new QIcon("insights")).withWidgets(List.of(HOME_WIDGET))
+         .withIcon(new QIcon("insights")).withWidgets(widgets().stream().map(QWidgetMetaData::getName).toList())
          .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED))
          .withSection(new QAppSection().withName("analyses").withLabel("Analyses").withIcon(new QIcon("insights")).withTables(DataAnalysisTables.NAV_TABLES));
       app.setParentAppName(config.getParentAppName());
@@ -100,194 +114,177 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
 
 
    /*******************************************************************************
-    ** RawHTML is carried as a JSON string by the HTML widget, not a text/html response.
-    ** Entities keep static separators independent of any host charset handling.
+    ** Dispatch data by registered metadata name, never by an arbitrary table input.
     *******************************************************************************/
    @Override
    public RenderWidgetOutput render(RenderWidgetInput input) throws QException
    {
-      return (new RenderWidgetOutput(new RawHTML(null, render(Instant.now()))));
+      return (new RenderWidgetOutput(render(input.getWidgetMetaData().getName(), Instant.now())));
    }
 
-
+   /*******************************************************************************
+    ** Counts and table rows share core-enforced permissions and record locks.
+    *******************************************************************************/
+   public static QWidgetData render(String name, Instant now) throws QException
+   {
+      if(HOME_WIDGET.equals(name))
+      {
+         return (statistics(now));
+      }
+      if(STARRED.equals(name))
+      {
+         TableData data = table("Starred analyses", DataAnalysisTables.SAVED, "No starred analyses yet. Star a saved analysis to see it here.", "Name", "Table", "Kind");
+         if(canRead(DataAnalysisTables.SAVED))
+         {
+            for(var entry : DataAnalysisRuntime.saved().list().stream().filter(SavedAnalyses.Entry::starred).toList())
+            {
+               data.getRows().add(values(link(DataAnalysisTables.SAVED, entry.id(), entry.name()), entry.tableLabel(), entry.kind()));
+            }
+         }
+         return (data);
+      }
+      String source = FIRING.equals(name) ? DataAnalysisTables.WATCH : DataAnalysisTables.RUN;
+      TableData data = FIRING.equals(name)
+         ? table("Firing watches", source, "No firing watches.", "Watch", "Table", "Last evaluated", "Message")
+         : table("My recent runs", source, "No analysis runs yet.", "Analysis", "Table", "Status", "Started");
+      if(!canRead(source))
+      {
+         return (data);
+      }
+      QQueryFilter filter = FIRING.equals(name) ? equal("state", "FIRING")
+         : equal("user_id", SavedAnalyses.user()).withCriteria("started_at", QCriteriaOperator.LESS_THAN_OR_EQUALS, now);
+      filter.withOrderBy(new QFilterOrderBy(FIRING.equals(name) ? "last_evaluated_at" : "started_at", false)).withLimit(10);
+      for(var row : SavedAnalyses.query(source, filter))
+      {
+         String tableName = row.getValueString("table_name");
+         var metadata = QContext.getQInstance().getTable(tableName);
+         String label = metadata == null ? Objects.toString(tableName, "Saved analysis") : metadata.getLabel();
+         data.getRows().add(FIRING.equals(name)
+            ? values(link(source, row.getValue("id"), row.getValueString("detector")), label, row.getValue("last_evaluated_at"), row.getValue("last_message"))
+            : values(link(source, row.getValue("id"), row.getValueString("operation")), label, row.getValue("status"), row.getValue("started_at")));
+      }
+      return (data);
+   }
 
    /*******************************************************************************
-    ** Counts are evaluated at one instant; no system session or synthetic numbers.
+    ** One standard group per subject, with real counts or an unavailable explanation.
     *******************************************************************************/
-   public static String render(Instant now) throws QException
+   public static MultiStatisticsData statistics(Instant now) throws QException
    {
-      StringBuilder html = new StringBuilder("<div class=\"data-analysis-home\" style=\"display:grid;gap:1rem;min-width:0;overflow-wrap:anywhere\">");
-      String userId = QContext.getQSession() == null || QContext.getQSession().getUser() == null ? null : QContext.getQSession().getUser().getIdReference();
-      html.append("<section><h3>Saved analyses</h3>");
-      if(userId == null)
+      List<MultiStatisticsData.StatisticsGroupData> groups = new ArrayList<>();
+      var saved = group("Saved analyses", DataAnalysisTables.SAVED);
+      if(canRead(DataAnalysisTables.SAVED))
       {
-         html.append("<p>Sign in to see your saved analyses and stars.</p>");
+         List<SavedAnalyses.Entry> entries = DataAnalysisRuntime.saved().list();
+         String user = SavedAnalyses.user();
+         saved.withStatisticList(List.of(stat("Mine", (int) entries.stream().filter(e -> e.owner().equals(user)).count(), DataAnalysisTables.SAVED),
+            stat("Shared", (int) entries.stream().filter(e -> Boolean.TRUE.equals(e.shared())).count(), DataAnalysisTables.SAVED),
+            stat("Starred", (int) entries.stream().filter(SavedAnalyses.Entry::starred).count(), DataAnalysisTables.SAVED)));
       }
-      else if(canRead(DataAnalysisTables.SAVED))
-      {
-         int mine = count(DataAnalysisTables.SAVED, equal("owner_user_id", userId));
-         int shared = count(DataAnalysisTables.SAVED, equal("shared", true));
-         html.append("<p>Mine: ").append(AnalysisFormatting.number(mine, 0)).append(" &middot; Shared (visible to you): ").append(AnalysisFormatting.number(shared, 0)).append("</p>");
-         if(canRead(DataAnalysisTables.SAVED_STAR))
-         {
-            CountInput stars = new CountInput(DataAnalysisTables.SAVED).withIncludeDistinctCount(true)
-               .withQueryJoin(new QueryJoin(QContext.getQInstance().getJoin(DataAnalysisTables.joinName(DataAnalysisTables.SAVED_STAR))).withType(QueryJoin.Type.INNER))
-               .withFilter(equal(DataAnalysisTables.SAVED_STAR + ".user_id", userId));
-            stars.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
-            int starred = new CountAction().execute(stars).getDistinctCount();
-            html.append("<p>Starred by me: ").append(AnalysisFormatting.number(starred, 0)).append("</p>");
-         }
-         if(mine == 0 && shared == 0)
-         {
-            html.append("<p>No saved analyses yet. Open any table and choose Analyze on a column header to explore its data.</p>");
-         }
-         link(html, DataAnalysisTables.SAVED);
-      }
-      else
-      {
-         html.append("<p>Saved analyses are unavailable: you need data_analysis.saved.read.</p>");
-      }
-      html.append("</section><section><h3>Watches</h3>");
+      groups.add(saved);
+      var watches = group("Watches", DataAnalysisTables.WATCH);
       if(canRead(DataAnalysisTables.WATCH))
       {
-         int total = count(DataAnalysisTables.WATCH, new QQueryFilter());
-         int enabled = count(DataAnalysisTables.WATCH, equal("enabled", true));
-         int firing = count(DataAnalysisTables.WATCH, equal("state", "FIRING"));
-         html.append("<p>Total: ").append(AnalysisFormatting.number(total, 0)).append(" &middot; Enabled: ").append(AnalysisFormatting.number(enabled, 0)).append(" &middot; Firing: ").append(AnalysisFormatting.number(firing, 0)).append("</p>");
-         if(total == 0)
-         {
-            html.append("<p>No watches yet.</p>");
-         }
-         QueryInput watches = new QueryInput(DataAnalysisTables.WATCH).withShouldFetchHeavyFields(true)
-            .withFilter(new QQueryFilter().withOrderBy(new QFilterOrderBy("state", true)).withOrderBy(new QFilterOrderBy("id", false)).withLimit(5));
-         watches.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
-         List<QRecord> recent = new QueryAction().execute(watches).getRecords();
-         if(!recent.isEmpty())
-         {
-            html.append("<ul>");
-            for(QRecord watch : recent)
-            {
-               String path = QContext.getQInstance().getTablePath(DataAnalysisTables.WATCH) + "/" + watch.getValueInteger("id");
-               html.append("<li><a href=\"").append(escape(path)).append("\">")
-                  .append(escape(words(watch.getValueString("state")))).append(" &middot; ")
-                  .append(escape(words(watch.getValueString("detector")))).append("</a>");
-               if(watch.getValueString("last_message") != null)
-               {
-                  html.append(" — ").append(escape(watch.getValueString("last_message")));
-               }
-               html.append("</li>");
-            }
-            html.append("</ul>");
-         }
-         link(html, DataAnalysisTables.WATCH);
+         watches.withStatisticList(List.of(stat("Enabled", count(DataAnalysisTables.WATCH, equal("enabled", true)), DataAnalysisTables.WATCH),
+            stat("Firing", count(DataAnalysisTables.WATCH, equal("state", "FIRING")), DataAnalysisTables.WATCH)));
       }
-      else
+      groups.add(watches);
+      var runs = group("My runs", DataAnalysisTables.RUN);
+      if(canRead(DataAnalysisTables.RUN))
       {
-         html.append("<p>Watches are unavailable: you need data_analysis.watch.read.</p>");
+         runs.withStatisticList(List.of(stat("Last 7 days", count(DataAnalysisTables.RUN, equal("user_id", SavedAnalyses.user())
+            .withCriteria("started_at", QCriteriaOperator.GREATER_THAN_OR_EQUALS, now.minus(7, ChronoUnit.DAYS))
+            .withCriteria("started_at", QCriteriaOperator.LESS_THAN_OR_EQUALS, now)), DataAnalysisTables.RUN)));
       }
-      html.append("</section><section><h3>Recent analysis runs</h3>");
-      if(userId == null)
-      {
-         html.append("<p>Sign in to see your recent analysis runs.</p>");
-      }
-      else if(canRead(DataAnalysisTables.RUN))
-      {
-         QueryInput query = new QueryInput(DataAnalysisTables.RUN).withFilter(equal("user_id", userId)
-            .withCriteria(new QFilterCriteria("started_at", QCriteriaOperator.LESS_THAN_OR_EQUALS, now))
-            .withOrderBy(new QFilterOrderBy("started_at", false)).withOrderBy(new QFilterOrderBy("id", false)).withLimit(5));
-         query.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
-         List<QRecord> runs = new QueryAction().execute(query).getRecords();
-         if(runs.isEmpty())
-         {
-            html.append("<p>No analysis runs yet.</p>");
-         }
-         else
-         {
-            html.append("<ul class=\"data-analysis-runs\">");
-            for(QRecord run : runs)
-            {
-               QTableMetaData table = QContext.getQInstance().getTable(run.getValueString("table_name"));
-               String tableLabel = table == null ? run.getValueString("table_name") : table.getLabel();
-               String path = QContext.getQInstance().getTablePath(DataAnalysisTables.RUN) + "/" + run.getValueInteger("id");
-               html.append("<li><a href=\"").append(escape(path)).append("\">").append(escape(tableLabel)).append(" &middot; ")
-                  .append(escape(words(run.getValueString("operation")))).append("</a><dl class=\"data-analysis-run-details\"><dt>Status</dt><dd>")
-                  .append(escape(words(run.getValueString("status")))).append("</dd><dt>Finished</dt><dd>")
-                  .append(run.getValue("finished_at") == null ? "Not finished" : escape(AnalysisFormatting.instant(run.getValueInstant("finished_at"))))
-                  .append("</dd></dl></li>");
-            }
-            html.append("</ul>");
-         }
-         link(html, DataAnalysisTables.RUN);
-      }
-      else
-      {
-         html.append("<p>Run history is unavailable: you need data_analysis.run.read.</p>");
-      }
-      return (html.append("</section></div>").toString());
+      groups.add(runs);
+      return (new MultiStatisticsData("Analyses", groups));
    }
 
-
-
    /*******************************************************************************
-    ** Explicit permission checks avoid presenting denied sections as empty data.
+    ** Empty/denied data are different messages, not synthetic zeroes.
     *******************************************************************************/
-   private static boolean canRead(String table)
+   private static MultiStatisticsData.StatisticsGroupData group(String label, String table)
    {
-      return (PermissionsHelper.hasTablePermission(new CountInput(table), table, TablePermissionSubType.READ));
+      return (new MultiStatisticsData.StatisticsGroupData().withHeader(label).withStatisticList(List.of())
+         .withSubheader(canRead(table) ? "Visible to you" : "Unavailable: READ permission required."));
    }
 
-
-
    /*******************************************************************************
-    ** Equality filter for one count.
+    ** Link every count to its actual table path.
     *******************************************************************************/
-   private static QQueryFilter equal(String field, java.io.Serializable value)
+   private static MultiStatisticsData.StatisticsGroupData.Statistic stat(String label, int count, String table) throws QException
    {
-      return (new QQueryFilter().withCriteria(new QFilterCriteria(field, QCriteriaOperator.EQUALS, value)));
+      return (new MultiStatisticsData.StatisticsGroupData.Statistic(label, count, QContext.getQInstance().getTablePath(table)));
    }
 
-
-
    /*******************************************************************************
-    ** Stored operation and status keys are displayed as ordinary words.
+    ** Standard table cells support escaped record links; other columns are plain text.
     *******************************************************************************/
-   private static String words(String value)
+   private static TableData table(String label, String table, String empty, String... headers) throws QException
    {
-      return (value == null ? "Unknown" : Arrays.stream(value.toLowerCase(Locale.ROOT).split("_"))
-         .filter(part -> !part.isEmpty()).map(part -> Character.toUpperCase(part.charAt(0)) + part.substring(1)).collect(Collectors.joining(" ")));
+      List<TableData.Column> columns = new ArrayList<>();
+      for(int i = 0; i < headers.length; i++)
+      {
+         columns.add(new TableData.Column(i == 0 ? "html" : "text", headers[i], "c" + i, null, "left"));
+      }
+      return (new TableData(label, columns, new ArrayList<>()).withNoRowsFoundHTML(canRead(table) ? empty : "Unavailable: READ permission required.")
+         .withLinkText("View all").withLinkURL(QContext.getQInstance().getTablePath(table)).withRowsPerPage(10));
    }
 
-
+   /*******************************************************************************
+    ** Preserve real values while avoiding null map entries and executable HTML.
+    *******************************************************************************/
+   private static Map<String, Object> values(Object... values)
+   {
+      Map<String, Object> row = new LinkedHashMap<>();
+      for(int i = 0; i < values.length; i++)
+      {
+         row.put("c" + i, Objects.toString(values[i], ""));
+      }
+      return (row);
+   }
 
    /*******************************************************************************
-    ** Metadata and persisted values must never become executable widget markup.
+    ** Standard table HTML cell contains only an escaped link and escaped text.
+    *******************************************************************************/
+   private static String link(String table, Object id, String label) throws QException
+   {
+      return ("<a href=\"" + escape(QContext.getQInstance().getTablePath(table) + "/" + id) + "\">" + escape(label) + "</a>");
+   }
+
+   /*******************************************************************************
+    ** Metadata labels and stored names are never trusted markup.
     *******************************************************************************/
    private static String escape(String value)
    {
-      return (value == null ? "Unknown" : value.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;").replace("'", "&#39;"));
+      return (Objects.toString(value, "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;"));
    }
 
-
+   /*******************************************************************************
+    ** Explicit checks distinguish denied sections from empty sections.
+    *******************************************************************************/
+   private static boolean canRead(String table)
+   {
+      CountInput input = new CountInput(table);
+      input.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
+      return (PermissionsHelper.hasTablePermission(input, table, TablePermissionSubType.READ));
+   }
 
    /*******************************************************************************
-    ** CountAction enforces table permission and record locks using QContext's session.
+    ** Simple filter; record security is applied exclusively by core.
+    *******************************************************************************/
+   private static QQueryFilter equal(String field, java.io.Serializable value)
+   {
+      return (DrillFilters.condition(field, QCriteriaOperator.EQUALS, value));
+   }
+
+   /*******************************************************************************
+    ** Counts use the viewer's session and explicitly enforce permissions.
     *******************************************************************************/
    private static int count(String table, QQueryFilter filter) throws QException
    {
       CountInput input = new CountInput(table).withFilter(filter);
       input.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
       return (new CountAction().execute(input).getCount());
-   }
-
-
-
-   /*******************************************************************************
-    ** Use the instance's actual app path, including custom names and parent apps.
-    *******************************************************************************/
-   private static void link(StringBuilder html, String table) throws QException
-   {
-      String path = QContext.getQInstance().getTablePath(table);
-      html.append("<a href=\"").append(escape(path))
-         .append("\">View all</a>");
    }
 }

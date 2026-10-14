@@ -41,7 +41,6 @@ import com.kingsrook.qbits.dataanalysis.result.PivotRequest;
 import com.kingsrook.qbits.dataanalysis.result.PivotResult;
 import com.kingsrook.qbits.dataanalysis.result.ValueType;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
-import com.kingsrook.qqq.backend.core.actions.tables.AggregateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -617,7 +616,7 @@ public class PivotExplorer
       groups.forEach(input::withGroupBy);
       new LinkedHashSet<>(aggregates).forEach(input::withAggregate);
       input.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
-      var output = new AggregateAction().execute(input);
+      var output = com.kingsrook.qbits.dataanalysis.saved.SqlHandoff.aggregate(input);
       partial |= output.getTruncated();
       return (limit == null ? output.getResults() : output.getResults().stream().sorted(java.util.Comparator.comparingLong(this::count).reversed()
          .thenComparing(r -> String.valueOf(r.getGroupByValues().values()))).limit(limit).toList());

@@ -76,8 +76,10 @@ public class DataAnalysisApi
     *******************************************************************************/
    public static MiddlewareSpecExtension extension()
    {
-      return (new MiddlewareSpecExtension().withName("data-analysis").withSemanticVersion("1.3.0")
+      return (new MiddlewareSpecExtension().withName("data-analysis").withSemanticVersion("1.4.0")
          .withDescription("Profiles, pivots, comparisons, distribution shifts, correlations, scatter samples, crosstabs and anomaly watch previews as the signed-in user.")
+         .withSpec(SavedApi.Run.class).withSpec(SavedApi.ListSaved.class).withSpec(SavedApi.Star.class).withSpec(SavedApi.Unstar.class)
+         .withSpec(SavedApi.Sql.class).withSpec(AnalysisFileSpec.class).withSpec(AnalysisFileSpec.Saved.class)
          .withSpec(CapabilitiesSpec.class).withSpec(ColumnProfileSpec.class).withSpec(DistinctValuesSpec.class)
          .withSpec(CompareSpec.class).withSpec(ShiftSpec.class).withSpec(CorrelationSpec.class).withSpec(ScatterSpec.class).withSpec(CrosstabSpec.class)
          .withSpec(WatchPreviewSpec.class).withSpec(PivotSpec.class).withSpec(TableProfileSpec.class).withSpec(DuplicatesSpec.class).withSpec(StartRunSpec.class).withSpec(GetRunSpec.class));
@@ -463,8 +465,7 @@ public class DataAnalysisApi
       result.canAnalyze = false;
       result.fields = List.of();
       result.backendCapabilities = List.of();
-      result.sqlWorkbenchAvailable = QContext.getQInstance().getApp("sqlWorkbench") != null
-         || QContext.getQInstance().getTables().keySet().stream().anyMatch(t -> t.startsWith("sql_workbench_"));
+      result.sqlWorkbenchAvailable = com.kingsrook.qbits.dataanalysis.saved.SqlHandoff.installedAndAllowed();
       try
       {
          var capabilities = DataAnalysisRuntime.service().capabilities(name);

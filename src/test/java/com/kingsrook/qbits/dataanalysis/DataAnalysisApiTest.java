@@ -119,8 +119,17 @@ class DataAnalysisApiTest extends EngineFixture
     *******************************************************************************/
    private JsonNode call(HttpMethod method, String path, Object body, int status) throws Exception
    {
+      String savedId = path.startsWith("/saved/") ? path.split("/")[2] : null;
+      if(savedId != null)
+      {
+         path = path.replace("/saved/" + savedId + "/", "/saved/{id}/");
+      }
       var request = new UiApiRequest().withMethod(method).withPath(DataAnalysisApi.PREFIX + path)
          .withPathParam("table", "orders").withSessionUUID(caller).withUserTimezone("America/Chicago");
+      if(savedId != null)
+      {
+         request.withPathParam("id", savedId);
+      }
       if(body != null)
       {
          request.withJsonBody(body);
@@ -173,7 +182,7 @@ class DataAnalysisApiTest extends EngineFixture
          assertThat(denied.getStatus()).isEqualTo(403);
          assertThat(run.path(operation.equals("COLUMN_PROFILE") ? "columnProfile" : "tableProfile").isObject()).isTrue();
       }
-      assertThat(invoker.listOperations().stream().filter(o -> o.pathTemplate().startsWith(DataAnalysisApi.PREFIX)).toList()).hasSize(14);
+      assertThat(invoker.listOperations().stream().filter(o -> o.pathTemplate().startsWith(DataAnalysisApi.PREFIX)).toList()).hasSize(21);
       var client = java.net.http.HttpClient.newHttpClient();
       var response = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://127.0.0.1:" + server.getBoundPort() + "/qqq/v1/openapi.json")).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
       assertThat(response.statusCode()).isEqualTo(200);
@@ -355,7 +364,7 @@ class DataAnalysisApiTest extends EngineFixture
       }
       relationshipCountDrills(call(HttpMethod.POST, "/tables/{table}/crosstab", Map.of("rowField", "status", "columnField", "customer"), 200));
       // All new schemas are discoverable from the same served OpenAPI catalog.
-      assertThat(com.kingsrook.qbits.dataanalysis.api.DataAnalysisApi.extension().getSemanticVersion()).isEqualTo("1.3.0");
+      assertThat(com.kingsrook.qbits.dataanalysis.api.DataAnalysisApi.extension().getSemanticVersion()).isEqualTo("1.4.0");
    }
 
    /*******************************************************************************
@@ -451,5 +460,57 @@ class DataAnalysisApiTest extends EngineFixture
       assertThat(invoker.invoke(request.withSessionUUID("denied")).getStatus()).isEqualTo(403);
       assertThat(invoker.invoke(request.withSessionUUID(caller).withPathParam("id", "99999")).getStatus()).isEqualTo(404);
       assertThat(invoker.invoke(request.withPathParam("id", "invalid")).getStatus()).isEqualTo(400);
+   }
+
+   @Test
+   void savedOperationsAndFileResponsesOverHttp() throws Exception
+   {
+      var shared = TestSupport.insert(com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables.SAVED,
+         SavedAnalysesTest.definition("alice", true, "TABLE_PROFILE", Map.of("fields", List.of("amount", "secret"))));
+      var privateRow = TestSupport.insert(com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables.SAVED,
+         SavedAnalysesTest.definition("alice", false, "COLUMN_PROFILE", Map.of("fieldName", "amount")));
+      start();
+      caller = "watch-saved-viewer";
+      String path = "/saved/" + shared.getValue("id");
+      var result = call(HttpMethod.POST, path + "/run", null, 200);
+      assertThat(result.path("kind").asText()).isEqualTo("TABLE_PROFILE");
+      assertThat(result.path("warnings").toString()).contains("Some fields are not available to you");
+      assertThat(result.path("tableProfile").path("fields").size()).isEqualTo(1);
+      call(HttpMethod.POST, "/saved/" + privateRow.getValue("id") + "/run", null, 404);
+      call(HttpMethod.POST, "/saved/invalid/run", null, 400);
+      assertThat(call(HttpMethod.PUT, path + "/star", null, 200).path("starred").asBoolean()).isTrue();
+      call(HttpMethod.PUT, path + "/star", null, 200);
+      assertThat(call(HttpMethod.GET, "/saved", null, 200).path("analyses").get(0).path("starred").asBoolean()).isTrue();
+      assertThat(call(HttpMethod.DELETE, path + "/star", null, 200).path("starred").asBoolean()).isFalse();
+      assertThat(call(HttpMethod.POST, "/tables/{table}/sql", Map.of("kind", "TABLE_PROFILE", "request", Map.of("fields", List.of("amount"))), 200).path("available").asBoolean()).isFalse();
+      var client = java.net.http.HttpClient.newHttpClient();
+      for(String format : List.of("csv", "xlsx"))
+      {
+         String url = "http://127.0.0.1:" + server.getBoundPort() + "/qqq/v1" + DataAnalysisApi.PREFIX + path + "/export?format=" + format;
+         var response = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(url)).header("Cookie", "sessionUUID=" + caller).GET().build(), java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+         assertThat(response.statusCode()).as(new String(response.body(), java.nio.charset.StandardCharsets.UTF_8)).isEqualTo(200);
+         assertThat(response.headers().firstValue("Content-Disposition").orElse("")).contains("analysis." + format);
+         if(format.equals("xlsx"))
+         {
+            try(var workbook = org.apache.poi.ss.usermodel.WorkbookFactory.create(new java.io.ByteArrayInputStream(response.body())))
+            {
+               assertThat(workbook.getSheetAt(0).getLastRowNum()).isPositive();
+            }
+         }
+         else
+         {
+            assertThat(new String(response.body(), java.nio.charset.StandardCharsets.UTF_8)).contains("Completeness");
+         }
+      }
+      var export = invoker.invoke(new UiApiRequest().withMethod(HttpMethod.POST).withPath(DataAnalysisApi.PREFIX + "/export").withSessionUUID(caller)
+         .withJsonBody(Map.of("kind", "COLUMN_PROFILE", "tableName", "orders", "request", Map.of("fieldName", "amount"), "format", "csv")));
+      assertThat(export.getStatus()).as(export.getBody()).isEqualTo(200);
+      assertThat(export.getBody()).contains("Counts");
+      call(HttpMethod.POST, "/export", Map.of("kind", "TABLE_PROFILE", "tableName", "orders", "request", Map.of(), "format", "pdf"), 400);
+      caller = "denied";
+      call(HttpMethod.POST, path + "/run", null, 403);
+      var operations = invoker.listOperations().stream().filter(o -> o.pathTemplate().startsWith(DataAnalysisApi.PREFIX)).toList();
+      assertThat(operations).hasSize(21);
+      assertThat(operations.stream().map(Object::toString).toList().toString()).contains("/saved/{id}/run", "/saved/{id}/star", "/saved/{id}/export", "/tables/{table}/sql", "/export");
    }
 }

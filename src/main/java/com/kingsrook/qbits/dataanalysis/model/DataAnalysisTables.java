@@ -239,8 +239,15 @@ public final class DataAnalysisTables
          .withField(field("chart_kind", QFieldType.STRING).withPossibleValueSourceName("data_analysis_chart_kind"))
          .withField(field("owner_user_id", QFieldType.STRING).withIsRequired(true))
          .withField(field("shared", QFieldType.BOOLEAN).withDefaultValue(false))
+         .withField(field("read_owner_user_id", QFieldType.STRING).withIsEditable(false).withIsHidden(true))
          .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD))
-         .withRecordSecurityLock(ownerLock("owner_user_id")));
+         .withRecordSecurityLock(ownerLock("owner_user_id").withLockScope(RecordSecurityLock.LockScope.WRITE))
+         .withRecordSecurityLock(ownerLock("read_owner_user_id").withLockScope(RecordSecurityLock.LockScope.READ)
+            .withNullValueBehavior(RecordSecurityLock.NullValueBehavior.ALLOW))
+         .withCustomizer(com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers.PRE_INSERT_RECORD,
+            new QCodeReference(com.kingsrook.qbits.dataanalysis.saved.SavedCustomizer.class))
+         .withCustomizer(com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers.PRE_UPDATE_RECORD,
+            new QCodeReference(com.kingsrook.qbits.dataanalysis.saved.SavedCustomizer.class)));
       tables.add(base(config, SAVED_STAR, "Stars", "star", "data_analysis.saved")
          .withRecordLabelFormatAndFields("%s", "user_id")
          .withField(field("saved_id", QFieldType.INTEGER).withPossibleValueSourceName("data_analysis_saved").withIsRequired(true))
@@ -259,9 +266,13 @@ public final class DataAnalysisTables
          .withField(field("recipients", QFieldType.TEXT))
          .withField(field("enabled", QFieldType.BOOLEAN).withDefaultValue(false))
          .withField(field("last_run_at", QFieldType.DATE_TIME))
-         .withField(field("last_status", QFieldType.STRING).withPossibleValueSourceName("data_analysis_run_status"))
+         .withField(field("last_status", QFieldType.TEXT).withIsEditable(false))
          .withField(field("next_run_at", QFieldType.DATE_TIME))
-         .withRecordSecurityLock(ownerLock(SAVED + ".owner_user_id").withJoinNameChain(List.of(joinName(SCHEDULE)))));
+         .withRecordSecurityLock(ownerLock(SAVED + ".owner_user_id").withJoinNameChain(List.of(joinName(SCHEDULE))))
+         .withCustomizer(com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers.PRE_INSERT_RECORD,
+            new QCodeReference(com.kingsrook.qbits.dataanalysis.schedule.ScheduleCustomizer.class))
+         .withCustomizer(com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers.PRE_UPDATE_RECORD,
+            new QCodeReference(com.kingsrook.qbits.dataanalysis.schedule.ScheduleCustomizer.class)));
       tables.add(base(config, WATCH, "Watches", "notifications_active", "data_analysis.watch")
          .withRecordLabelFormatAndFields("%s", "detector")
          .withField(field("saved_id", QFieldType.INTEGER).withPossibleValueSourceName("data_analysis_saved")
@@ -305,7 +316,7 @@ public final class DataAnalysisTables
       for(QTableMetaData table : tables)
       {
          List<String> fields = new ArrayList<>(table.getFields().keySet());
-         fields.removeAll(List.of("id", "createDate", "modifyDate"));
+         fields.removeAll(List.of("id", "createDate", "modifyDate", "read_owner_user_id"));
          int headlineSize = Math.min(4, fields.size());
          table.withSection(SectionFactory.defaultT1(fields.subList(0, headlineSize).toArray(String[]::new)));
          if(fields.size() > headlineSize)

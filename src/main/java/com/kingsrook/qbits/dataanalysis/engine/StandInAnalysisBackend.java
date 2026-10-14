@@ -38,7 +38,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
-import com.kingsrook.qqq.backend.core.actions.tables.AggregateAction;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -171,7 +170,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
       restored.setOrderBys(input.getFilter().getOrderBys());
       input.setFilter(restored);
       input.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
-      return (new AggregateAction().execute(input).getResults());
+      return (com.kingsrook.qbits.dataanalysis.saved.SqlHandoff.aggregate(input).getResults());
    }
 
 

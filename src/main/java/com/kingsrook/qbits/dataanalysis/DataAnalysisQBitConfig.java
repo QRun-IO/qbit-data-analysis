@@ -426,4 +426,59 @@ public class DataAnalysisQBitConfig implements QBitConfig
       ownerSessionSupplier = supplier;
       return (this);
    }
+
+   private String messagingProviderName;
+   private String fromAddress;
+   private transient java.util.function.Function<String, String> recipientAddressSupplier;
+
+   /*******************************************************************************
+    ** Core messaging provider used for scheduled delivery.
+    *******************************************************************************/
+   public String getMessagingProviderName()
+   {
+      return (messagingProviderName);
+   }
+
+   /*******************************************************************************
+    ** Select the host's configured SMTP or SES provider.
+    *******************************************************************************/
+   public DataAnalysisQBitConfig withMessagingProviderName(String value)
+   {
+      messagingProviderName = value;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Verified sender address supplied by the host.
+    *******************************************************************************/
+   public String getFromAddress()
+   {
+      return (fromAddress);
+   }
+
+   /*******************************************************************************
+    ** Set the scheduled email sender.
+    *******************************************************************************/
+   public DataAnalysisQBitConfig withFromAddress(String value)
+   {
+      fromAddress = value;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Resolve a user id to its current email; never treat recipients as addresses.
+    *******************************************************************************/
+   public java.util.function.Function<String, String> getRecipientAddressSupplier()
+   {
+      return (recipientAddressSupplier);
+   }
+
+   /*******************************************************************************
+    ** Bind the host directory's user-to-email lookup.
+    *******************************************************************************/
+   public DataAnalysisQBitConfig withRecipientAddressSupplier(java.util.function.Function<String, String> value)
+   {
+      recipientAddressSupplier = value;
+      return (this);
+   }
 }

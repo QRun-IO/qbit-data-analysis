@@ -66,7 +66,8 @@ public class DataAnalysisMetaDataProducer extends QBitComponentMetaDataProducer<
             .filter(qbit -> DataAnalysisQBitProducer.ARTIFACT_ID.equals(qbit.getArtifactId())).findFirst().orElseThrow().getName());
          output.add(table);
       }
-      output.add(DataAnalysisHome.widget());
+      DataAnalysisHome.widgets().forEach(output::add);
+      output.add(com.kingsrook.qbits.dataanalysis.app.SavedAnalysisWidget.widget());
       output.add(DataAnalysisHome.app(getQBitConfig(), tables));
       return (output);
    }

@@ -6,6 +6,13 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 
 ### Added
 
+- Phase f saved execution for all seven kinds, core owner-or-shared READ with owner-only WRITE, typed definition validation and viewer-specific field reduction.
+- Idempotent personal star endpoints and visible saved list; transient viewer runs, core CSV/XLSX downloads and QueryStat-backed SQL Workbench handoff.
+- Five-minute owner-session schedule runner, per-recipient FULL access checks and record-scoped reruns, core messaging with attachments, explicit failure statuses/alerts, timezone/weekly/monthly/cron timing and streamed ETL Send now.
+- Standard statistics/chart/table dashboard widgets, linked saved analysis widgets and real home rows with narrow tables and honest empty states.
+- Extension 1.4.0, seven new assistant-discoverable endpoints, regenerated OpenAPI and memory/H2/HTTP/export/email/security regression coverage.
+- Migration requirement: backfill saved `read_owner_user_id` before enabling shared reads and widen schedule `last_status` to TEXT. Stock core EMAIL attachment limitations fail visibly; supported messaging providers receive full attachments.
+
 - Phase e anomaly watches: owner-locked configuration, validated metrics/detector parameters, complete calendar buckets, five pure detectors, and scheduled evaluation through owner sessions.
 - Core alerts SPI type `data.analysis.anomaly` (core disallows the spec's underscore), stable watch keys, relative drill links, raise/recovery transitions, and persisted outcomes without an alerts implementation.
 - Standard streamed ETL Evaluate now / Enable / Disable record actions and firing-first linked watches on the Analyses home.

@@ -144,6 +144,13 @@ public class DataAnalysisQBitProducer implements QBitMetaDataProducer<DataAnalys
             .withResolveMode(com.kingsrook.qqq.backend.core.alerts.ResolveMode.PRODUCER)
             .withSubjectTableName(com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables.WATCH)
             .withVisibilityPermission("data_analysis.watch.read"));
+      com.kingsrook.qqq.backend.core.alerts.AlertsInstanceMetaData.ofOrWithNew(instance).withAlertType(
+         new com.kingsrook.qqq.backend.core.alerts.QAlertTypeMetaData().withName(com.kingsrook.qbits.dataanalysis.schedule.ScheduleRunner.ALERT_TYPE)
+            .withLabel("Analysis schedule failed").withSourceName(ARTIFACT_ID).withGroupName("data-analysis")
+            .withDefaultSeverity(com.kingsrook.qqq.backend.core.alerts.AlertSeverity.ERROR)
+            .withResolveMode(com.kingsrook.qqq.backend.core.alerts.ResolveMode.PRODUCER)
+            .withSubjectTableName(com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables.SCHEDULE)
+            .withVisibilityPermission("data_analysis.saved.read"));
       var included = java.util.Set.copyOf(qBitConfig.getIncludeTables());
       var excluded = java.util.Set.copyOf(qBitConfig.getExcludeTables());
       TableFeaturePermissionsMetaData.ofOrWithNew(instance).withPermission(new TableFeaturePermission()

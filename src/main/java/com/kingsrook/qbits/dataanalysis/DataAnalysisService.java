@@ -351,4 +351,29 @@ public class DataAnalysisService
       return (new com.kingsrook.qbits.dataanalysis.watch.WatchSeries(security, configs.resolve(table), table)
          .preview(definition, com.kingsrook.qbits.dataanalysis.watch.WatchRecords.filter(resolved), now));
    }
+
+   /*******************************************************************************
+    ** Saved definitions drop selected fields using the same FULL access resolver.
+    *******************************************************************************/
+   public boolean isAvailableField(String table, String field)
+   {
+      try
+      {
+         if(field.contains("."))
+         {
+            String[] parts = field.split("\\.", 2);
+            security.joinedField(parts[0], parts[1]);
+         }
+         else
+         {
+            security.field(table, field);
+         }
+         return (true);
+      }
+      catch(QException e)
+      {
+         return (false);
+      }
+   }
+
 }

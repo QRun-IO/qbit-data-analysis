@@ -30,6 +30,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaDa
 public class DataAnalysisRuntime implements QSupplementalInstanceMetaData
 {
    private final transient DataAnalysisService service;
+   private final transient com.kingsrook.qbits.dataanalysis.schedule.ScheduleRunner schedules;
+   private final transient com.kingsrook.qbits.dataanalysis.saved.SavedAnalyses saved;
    private final transient com.kingsrook.qbits.dataanalysis.watch.WatchEvaluator watches;
 
    /*******************************************************************************
@@ -38,6 +40,8 @@ public class DataAnalysisRuntime implements QSupplementalInstanceMetaData
    public DataAnalysisRuntime(DataAnalysisQBitConfig config)
    {
       service = new DataAnalysisService(config);
+      schedules = new com.kingsrook.qbits.dataanalysis.schedule.ScheduleRunner(config, service);
+      saved = new com.kingsrook.qbits.dataanalysis.saved.SavedAnalyses(service);
       watches = new com.kingsrook.qbits.dataanalysis.watch.WatchEvaluator(config, service);
    }
 
@@ -79,5 +83,21 @@ public class DataAnalysisRuntime implements QSupplementalInstanceMetaData
    public static com.kingsrook.qbits.dataanalysis.watch.WatchEvaluator watches()
    {
       return (((DataAnalysisRuntime) QContext.getQInstance().getSupplementalMetaData("dataAnalysisRuntime")).watches);
+   }
+
+   /*******************************************************************************
+    ** Saved operations share the instance's engine and serialize star toggles.
+    *******************************************************************************/
+   public static com.kingsrook.qbits.dataanalysis.saved.SavedAnalyses saved()
+   {
+      return (((DataAnalysisRuntime) QContext.getQInstance().getSupplementalMetaData("dataAnalysisRuntime")).saved);
+   }
+
+   /*******************************************************************************
+    ** Shared schedule runner for manual and automatic delivery.
+    *******************************************************************************/
+   public static com.kingsrook.qbits.dataanalysis.schedule.ScheduleRunner schedules()
+   {
+      return (((DataAnalysisRuntime) QContext.getQInstance().getSupplementalMetaData("dataAnalysisRuntime")).schedules);
    }
 }

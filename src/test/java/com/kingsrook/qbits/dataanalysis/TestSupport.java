@@ -116,7 +116,7 @@ final class TestSupport
     *******************************************************************************/
    static QRecord saved(String owner, boolean shared)
    {
-      return (new QRecord().withValue("name", "Profile").withValue("table_name", "orders").withValue("kind", "COLUMN_PROFILE")
-         .withValue("definition_json", "{}").withValue("owner_user_id", owner).withValue("shared", shared));
+      return (new QRecord().withValue("name", "Profile").withValue("table_name", DataAnalysisTables.RUN).withValue("kind", "COLUMN_PROFILE")
+         .withValue("definition_json", "{\"fieldName\":\"table_name\"}").withValue("owner_user_id", owner).withValue("shared", shared));
    }
 }
