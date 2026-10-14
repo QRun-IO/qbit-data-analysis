@@ -29,6 +29,7 @@ import com.kingsrook.qbits.dataanalysis.engine.AnalysisDrillGuard;
 import com.kingsrook.qbits.dataanalysis.engine.AnalysisLabels;
 import com.kingsrook.qbits.dataanalysis.engine.AnalysisSecurity;
 import com.kingsrook.qbits.dataanalysis.engine.ColumnProfiler;
+import com.kingsrook.qbits.dataanalysis.engine.ComparisonExplorer;
 import com.kingsrook.qbits.dataanalysis.engine.CoreAnalysisBackend;
 import com.kingsrook.qbits.dataanalysis.engine.DistinctValues;
 import com.kingsrook.qbits.dataanalysis.engine.DrillFilters;
@@ -36,12 +37,20 @@ import com.kingsrook.qbits.dataanalysis.engine.DuplicateFinder;
 import com.kingsrook.qbits.dataanalysis.engine.EffectiveConfigResolver;
 import com.kingsrook.qbits.dataanalysis.engine.FieldAnalysisAccessResolver;
 import com.kingsrook.qbits.dataanalysis.engine.PivotExplorer;
+import com.kingsrook.qbits.dataanalysis.engine.RelationshipExplorer;
+import com.kingsrook.qbits.dataanalysis.engine.ShiftExplorer;
 import com.kingsrook.qbits.dataanalysis.engine.StandInAnalysisBackend;
 import com.kingsrook.qbits.dataanalysis.engine.TableProfiler;
 import com.kingsrook.qbits.dataanalysis.result.AnalysisRequest;
 import com.kingsrook.qbits.dataanalysis.result.Capabilities;
 import com.kingsrook.qbits.dataanalysis.result.ColumnProfile;
 import com.kingsrook.qbits.dataanalysis.result.ColumnProfileRequest;
+import com.kingsrook.qbits.dataanalysis.result.CompareRequest;
+import com.kingsrook.qbits.dataanalysis.result.CompareResult;
+import com.kingsrook.qbits.dataanalysis.result.CorrelationRequest;
+import com.kingsrook.qbits.dataanalysis.result.CorrelationResult;
+import com.kingsrook.qbits.dataanalysis.result.CrosstabRequest;
+import com.kingsrook.qbits.dataanalysis.result.CrosstabResult;
 import com.kingsrook.qbits.dataanalysis.result.DistinctValuesPage;
 import com.kingsrook.qbits.dataanalysis.result.DistinctValuesRequest;
 import com.kingsrook.qbits.dataanalysis.result.DuplicatesRequest;
@@ -49,6 +58,10 @@ import com.kingsrook.qbits.dataanalysis.result.DuplicatesResult;
 import com.kingsrook.qbits.dataanalysis.result.PivotRequest;
 import com.kingsrook.qbits.dataanalysis.result.PivotResult;
 import com.kingsrook.qbits.dataanalysis.result.RunStatus;
+import com.kingsrook.qbits.dataanalysis.result.ScatterRequest;
+import com.kingsrook.qbits.dataanalysis.result.ScatterResult;
+import com.kingsrook.qbits.dataanalysis.result.ShiftRequest;
+import com.kingsrook.qbits.dataanalysis.result.ShiftResult;
 import com.kingsrook.qbits.dataanalysis.result.TableProfile;
 import com.kingsrook.qbits.dataanalysis.result.TableProfileRequest;
 import com.kingsrook.qbits.dataanalysis.run.AnalysisRunService;
@@ -279,5 +292,50 @@ public class DataAnalysisService
    public Map<String, Object> fieldAccessPolicy(String table) throws QException
    {
       return (AnalysisLabels.policy(table, fieldAccess));
+   }
+
+   /*******************************************************************************
+    ** Execute compare under the current user's FULL-field and record policy.
+    *******************************************************************************/
+   public CompareResult compare(CompareRequest request) throws QException
+   {
+      validate(request);
+      return (new ComparisonExplorer(security, configs.resolve(request.getTableName()), request.getTableName()).compare(request));
+   }
+
+   /*******************************************************************************
+    ** Execute correlation under the current user's FULL-field and record policy.
+    *******************************************************************************/
+   public CorrelationResult correlation(CorrelationRequest request) throws QException
+   {
+      validate(request);
+      return (new RelationshipExplorer(security, configs.resolve(request.getTableName()), request.getTableName()).correlation(request));
+   }
+
+   /*******************************************************************************
+    ** Execute crosstab under the current user's FULL-field and record policy.
+    *******************************************************************************/
+   public CrosstabResult crosstab(CrosstabRequest request) throws QException
+   {
+      validate(request);
+      return (new RelationshipExplorer(security, configs.resolve(request.getTableName()), request.getTableName()).crosstab(request));
+   }
+
+   /*******************************************************************************
+    ** Execute scatter under the current user's FULL-field and record policy.
+    *******************************************************************************/
+   public ScatterResult scatter(ScatterRequest request) throws QException
+   {
+      validate(request);
+      return (new RelationshipExplorer(security, configs.resolve(request.getTableName()), request.getTableName()).scatter(request));
+   }
+
+   /*******************************************************************************
+    ** Execute shift under the current user's FULL-field and record policy.
+    *******************************************************************************/
+   public ShiftResult shift(ShiftRequest request) throws QException
+   {
+      validate(request);
+      return (new ShiftExplorer(security, configs.resolve(request.getTableName()), request.getTableName()).shift(request));
    }
 }

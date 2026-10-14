@@ -28,9 +28,14 @@ import com.kingsrook.qbits.dataanalysis.engine.CoreAnalysisBackend;
 import com.kingsrook.qbits.dataanalysis.result.AnalysisRequest;
 import com.kingsrook.qbits.dataanalysis.result.ChartKind;
 import com.kingsrook.qbits.dataanalysis.result.ColumnProfileRequest;
+import com.kingsrook.qbits.dataanalysis.result.CompareRequest;
+import com.kingsrook.qbits.dataanalysis.result.CorrelationRequest;
+import com.kingsrook.qbits.dataanalysis.result.CrosstabRequest;
 import com.kingsrook.qbits.dataanalysis.result.DistinctValuesRequest;
 import com.kingsrook.qbits.dataanalysis.result.DuplicatesRequest;
 import com.kingsrook.qbits.dataanalysis.result.PivotRequest;
+import com.kingsrook.qbits.dataanalysis.result.ScatterRequest;
+import com.kingsrook.qbits.dataanalysis.result.ShiftRequest;
 import com.kingsrook.qbits.dataanalysis.result.TableProfileRequest;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
@@ -52,7 +57,7 @@ import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
 
 /*******************************************************************************
- ** Session-bound profile operations registered only with optional Javalin present.
+ ** Session-bound analysis operations registered only with optional Javalin present.
  *******************************************************************************/
 public class DataAnalysisApi
 {
@@ -71,14 +76,15 @@ public class DataAnalysisApi
     *******************************************************************************/
    public static MiddlewareSpecExtension extension()
    {
-      return (new MiddlewareSpecExtension().withName("data-analysis").withSemanticVersion("1.1.0")
-         .withDescription("Profiles, pivots, distinct values, duplicate groups and exact analysis runs as the signed-in user.")
+      return (new MiddlewareSpecExtension().withName("data-analysis").withSemanticVersion("1.2.0")
+         .withDescription("Profiles, pivots, comparisons, distribution shifts, correlations, scatter samples and crosstabs as the signed-in user.")
          .withSpec(CapabilitiesSpec.class).withSpec(ColumnProfileSpec.class).withSpec(DistinctValuesSpec.class)
+         .withSpec(CompareSpec.class).withSpec(ShiftSpec.class).withSpec(CorrelationSpec.class).withSpec(ScatterSpec.class).withSpec(CrosstabSpec.class)
          .withSpec(PivotSpec.class).withSpec(TableProfileSpec.class).withSpec(DuplicatesSpec.class).withSpec(StartRunSpec.class).withSpec(GetRunSpec.class));
    }
 
    /*******************************************************************************
-    ** Common schema catalog and path parameters for the seven JSON specs.
+    ** Common schema catalog and path parameters for the analysis JSON specs.
     *******************************************************************************/
    public abstract static class ProfileSpec extends AbstractJsonEndpointSpec
    {
@@ -575,6 +581,180 @@ public class DataAnalysisApi
             throw new QBadRequestException("Invalid pivot request.");
          }
          return (transport(DataAnalysisRuntime.service().pivot(pivot), DataAnalysisSchemas.DataAnalysisPivotV1.class));
+      }
+   }
+
+   /*******************************************************************************
+    ** Strict JSON types before Jackson conversion; engine validates FULL fields.
+    *******************************************************************************/
+   private static <T> T relationshipRequest(String tableName, Map<String, Object> body, Class<T> type) throws Exception
+   {
+      table(tableName);
+      DataAnalysisRuntime.service().capabilities(tableName);
+      try
+      {
+         for(String name : List.of("field", "dateField", "bucket", "xField", "yField", "rowField", "columnField", "labelA", "labelB"))
+         {
+            if(body.containsKey(name) && !(body.get(name) instanceof String))
+            {
+               throw new IllegalArgumentException("Expected a field name or label.");
+            }
+         }
+         if(body.containsKey("fields") && (!(body.get("fields") instanceof List<?> fields) || fields.stream().anyMatch(f -> !(f instanceof String))))
+         {
+            throw new IllegalArgumentException("Expected an array of field names.");
+         }
+         if(body.containsKey("limit"))
+         {
+            integer(body, "limit", 2000, 1, type == CrosstabRequest.class ? 20 : 2000);
+         }
+         for(String name : List.of("filter", "filterA", "filterB"))
+         {
+            Object filter = body.get(name);
+            if(filter != null)
+            {
+               if(!(filter instanceof Map<?, ?>))
+               {
+                  throw new IllegalArgumentException("Expected a query filter object.");
+               }
+               validateFilter(JsonUtils.toObject(JsonUtils.toJson(filter), QQueryFilter.class));
+            }
+         }
+         return (JsonUtils.toObject(JsonUtils.toJson(body), type));
+      }
+      catch(Exception e)
+      {
+         throw new QBadRequestException("Invalid relationship request.");
+      }
+   }
+
+   /*******************************************************************************
+    ** Compare filtered A with filtered B (null means the whole permitted table). Return means, medians or category shares, B-minus-A deltas, valid significance tests and count-equivalent drills. Only FULL fields are accepted.
+    *******************************************************************************/
+   public static class CompareSpec extends ProfileSpec
+   {
+      /*******************************************************************************
+       ** Public constructor for endpoint and assistant discovery.
+       *******************************************************************************/
+      public CompareSpec()
+      {
+         super("/tables/{table}/compare", HttpMethod.POST, "Compare two populations",
+            "Compare filtered A with filtered B (null means the whole permitted table). Return means, medians or category shares, B-minus-A deltas, valid significance tests and count-equivalent drills. Only FULL fields are accepted.", "CompareRequest", "Compare");
+      }
+
+      /*******************************************************************************
+       ** Execute with the calling session and versioned transport contract.
+       *******************************************************************************/
+      @Override
+      protected Object handle(JsonInput input) throws Exception
+      {
+         String tableName = input.getPathParam("table");
+         CompareRequest request = relationshipRequest(tableName, input.getBody(), CompareRequest.class).withTableName(tableName);
+         return (transport(DataAnalysisRuntime.service().compare(request), RelationshipSchemas.DataAnalysisCompareV1.class));
+      }
+   }
+
+   /*******************************************************************************
+    ** Compare category shares or numeric quartiles across session-timezone calendar buckets. Compute descriptive PSI between the first and last complete nonempty buckets using fixed categories or baseline quartile bins.
+    *******************************************************************************/
+   public static class ShiftSpec extends ProfileSpec
+   {
+      /*******************************************************************************
+       ** Public constructor for endpoint and assistant discovery.
+       *******************************************************************************/
+      public ShiftSpec()
+      {
+         super("/tables/{table}/shift", HttpMethod.POST, "Measure distribution shift over time",
+            "Compare category shares or numeric quartiles across session-timezone calendar buckets. Compute descriptive PSI between the first and last complete nonempty buckets using fixed categories or baseline quartile bins.", "ShiftRequest", "Shift");
+      }
+
+      /*******************************************************************************
+       ** Execute with the calling session and versioned transport contract.
+       *******************************************************************************/
+      @Override
+      protected Object handle(JsonInput input) throws Exception
+      {
+         String tableName = input.getPathParam("table");
+         ShiftRequest request = relationshipRequest(tableName, input.getBody(), ShiftRequest.class).withTableName(tableName);
+         return (transport(DataAnalysisRuntime.service().shift(request), RelationshipSchemas.DataAnalysisShiftV1.class));
+      }
+   }
+
+   /*******************************************************************************
+    ** Compute a Pearson correlation matrix for 2 to 12 distinct FULL numeric fields, using paired non-null records. Every cell includes n and parameters for the scatter endpoint; core pushes down CORR or uses bounded streaming.
+    *******************************************************************************/
+   public static class CorrelationSpec extends ProfileSpec
+   {
+      /*******************************************************************************
+       ** Public constructor for endpoint and assistant discovery.
+       *******************************************************************************/
+      public CorrelationSpec()
+      {
+         super("/tables/{table}/correlation", HttpMethod.POST, "Find numeric relationships",
+            "Compute a Pearson correlation matrix for 2 to 12 distinct FULL numeric fields, using paired non-null records. Every cell includes n and parameters for the scatter endpoint; core pushes down CORR or uses bounded streaming.", "CorrelationRequest", "Correlation");
+      }
+
+      /*******************************************************************************
+       ** Execute with the calling session and versioned transport contract.
+       *******************************************************************************/
+      @Override
+      protected Object handle(JsonInput input) throws Exception
+      {
+         String tableName = input.getPathParam("table");
+         CorrelationRequest request = relationshipRequest(tableName, input.getBody(), CorrelationRequest.class).withTableName(tableName);
+         return (transport(DataAnalysisRuntime.service().correlation(request), RelationshipSchemas.DataAnalysisCorrelationV1.class));
+      }
+   }
+
+   /*******************************************************************************
+    ** Return at most 2000 paired numeric points as the user, ordered by primary key when core query sampling is unavailable, plus a least-squares line fitted to the sample. Privacy disables individual drills and suppresses small populations.
+    *******************************************************************************/
+   public static class ScatterSpec extends ProfileSpec
+   {
+      /*******************************************************************************
+       ** Public constructor for endpoint and assistant discovery.
+       *******************************************************************************/
+      public ScatterSpec()
+      {
+         super("/tables/{table}/scatter", HttpMethod.POST, "Inspect a numeric relationship",
+            "Return at most 2000 paired numeric points as the user, ordered by primary key when core query sampling is unavailable, plus a least-squares line fitted to the sample. Privacy disables individual drills and suppresses small populations.", "ScatterRequest", "Scatter");
+      }
+
+      /*******************************************************************************
+       ** Execute with the calling session and versioned transport contract.
+       *******************************************************************************/
+      @Override
+      protected Object handle(JsonInput input) throws Exception
+      {
+         String tableName = input.getPathParam("table");
+         ScatterRequest request = relationshipRequest(tableName, input.getBody(), ScatterRequest.class).withTableName(tableName);
+         return (transport(DataAnalysisRuntime.service().scatter(request), RelationshipSchemas.DataAnalysisScatterV1.class));
+      }
+   }
+
+   /*******************************************************************************
+    ** Count combinations of two FULL fields with row and column shares, up to 20 categories per axis plus Other. Test independence using chi-square and Cramer V after pooling low expected counts; privacy suppresses small cells and their drills.
+    *******************************************************************************/
+   public static class CrosstabSpec extends ProfileSpec
+   {
+      /*******************************************************************************
+       ** Public constructor for endpoint and assistant discovery.
+       *******************************************************************************/
+      public CrosstabSpec()
+      {
+         super("/tables/{table}/crosstab", HttpMethod.POST, "Cross-tabulate two fields",
+            "Count combinations of two FULL fields with row and column shares, up to 20 categories per axis plus Other. Test independence using chi-square and Cramer V after pooling low expected counts; privacy suppresses small cells and their drills.", "CrosstabRequest", "Crosstab");
+      }
+
+      /*******************************************************************************
+       ** Execute with the calling session and versioned transport contract.
+       *******************************************************************************/
+      @Override
+      protected Object handle(JsonInput input) throws Exception
+      {
+         String tableName = input.getPathParam("table");
+         CrosstabRequest request = relationshipRequest(tableName, input.getBody(), CrosstabRequest.class).withTableName(tableName);
+         return (transport(DataAnalysisRuntime.service().crosstab(request), RelationshipSchemas.DataAnalysisCrosstabV1.class));
       }
    }
 }

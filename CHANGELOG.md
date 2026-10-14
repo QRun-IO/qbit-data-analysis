@@ -6,6 +6,11 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 
 ### Added
 
+- Phase d compare, shift, correlation, scatter and crosstab service operations and HTTP specs; extension version 1.2.0 with typed `DataAnalysis*V1` schemas and regenerated OpenAPI.
+- Pure-Java two-proportion, Welch, chi-square/Cramer V, PSI and Pearson statistics, including regularized incomplete beta/gamma and independent SciPy references.
+- Core-pushed numeric moments and batched correlations, sample trend lines, calendar distribution shifts, category pooling, privacy suppression and exact count drills.
+- Shared memory/H2/PostgreSQL relationship contracts, forced core streamed-fallback checks, batching checks and HTTP authorization/serialization/drill tests.
+
 - Phase c pivot backend and `POST /qbit/data-analysis/tables/{table}/pivot`, extension version 1.1.0, typed schemas and regenerated OpenAPI fragment.
 - Row/column dimensions, calendar/numeric buckets, seven measure operators, sparse cells, exact Other recomputation, totals, privacy suppression and count-equivalent drills.
 - Exposed-join dimensions and measures with READ/FULL checks; filter-only drills for to-one paths and explicit null-drill warnings for to-many paths whose joined-row counts can exceed record counts.

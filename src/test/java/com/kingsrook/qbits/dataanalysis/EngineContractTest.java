@@ -61,7 +61,7 @@ import static org.assertj.core.api.Assertions.within;
 /*******************************************************************************
  ** Shared backend acceptance tests, including a generic drill equivalence walker.
  *******************************************************************************/
-abstract class EngineContractTest extends PivotContractTest
+abstract class EngineContractTest extends RelationshipContractTest
 {
    /*******************************************************************************
     ** Every emitted key across all profile kinds has a label, on every backend.
