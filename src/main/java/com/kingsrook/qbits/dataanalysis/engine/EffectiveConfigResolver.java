@@ -66,6 +66,16 @@ public class EffectiveConfigResolver
 
 
    /*******************************************************************************
+    ** The code configuration this resolver starts from.
+    *******************************************************************************/
+   public DataAnalysisQBitConfig getDefaults()
+   {
+      return (defaults);
+   }
+
+
+
+   /*******************************************************************************
     ** Return a detached snapshot so callers cannot change memoized policy.
     *******************************************************************************/
    public EffectiveConfig resolve(String table) throws QException

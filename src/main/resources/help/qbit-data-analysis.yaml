@@ -1,0 +1,43 @@
+bundle: qbit-data-analysis
+version: 1
+layer: QBIT
+# Help for the Analyses app and every data_analysis_* table, in the QQQ help-bundle
+# format (qqq#1198). Each table entry says what the table is for and how its rows get
+# created, so an empty table explains itself. DataAnalysisHelp applies it until the core
+# HelpBundles registry ships in a QQQ release (STAND-IN(core=#1198)).
+# Summaries stay under 120 characters (DataAnalysisTablesGuardrailTest).
+entries:
+  - key: app:dataAnalysis;slot:help
+    summary: "Profile, pivot, compare and watch any table, and tune how analysis behaves per table."
+    content: |
+      The Setup card on the home lists each part, its state and the next step. Analysis works on every analyzable table from the start with built-in limits, so nothing is required. Open Analysis Settings and run Create rows for analyzable tables to see those limits as rows you can edit per table.
+
+  - key: table:data_analysis_table_config;slot:help
+    summary: "Per-table analysis limits: on or off, row limits, sampling, smallest group, cache minutes and field lists."
+    content: |
+      **How rows get created:** run the table action Create rows for analyzable tables once. It adds one row per table holding the settings that already apply, so nothing changes until you edit a row. Or add a row with New for just one table. A table without a row uses the defaults from the configuration, so an empty table means every table is on with the defaults. Cache minutes controls how long an exact result is reused (0 turns caching off). Smallest group hides groups with fewer records.
+
+  - key: table:data_analysis_saved;slot:help
+    summary: "Analyses people saved: the table, filter and view they want to come back to."
+    content: |
+      **How rows get created:** a person saves an analysis from the Analyze screen on any table. Each saved analysis belongs to its owner; stars, schedules and watches hang off it. Empty means nobody has saved one yet.
+
+  - key: table:data_analysis_saved_star;slot:help
+    summary: "Which saved analyses each person starred."
+    content: |
+      **How rows get created:** a person stars a saved analysis, and the row is theirs. Starred analyses show on the Analyses home. Empty means nothing is starred yet.
+
+  - key: table:data_analysis_schedule;slot:help
+    summary: "Schedules that run a saved analysis daily, weekly or monthly and send the result."
+    content: |
+      **How rows get created:** a person adds a schedule on a saved analysis (the Schedules list on the saved analysis). Schedules run only when the host configures a scheduler for the qbit. Empty means no analysis is scheduled.
+
+  - key: table:data_analysis_watch;slot:help
+    summary: "Watches that alert when a saved analysis spikes, drops, goes out of range or gets a new category."
+    content: |
+      **How rows get created:** a person adds a watch on a saved analysis (the Watches list on the saved analysis). Enabled watches are evaluated every 15 minutes when a scheduler is configured; Evaluate now checks one by hand. A firing watch raises an alert. Empty means nothing is being watched.
+
+  - key: table:data_analysis_run;slot:help
+    summary: "Each exact analysis run: who, what, when and the stored result that is reused as a cache."
+    content: |
+      **How rows get created:** automatically when someone starts an exact analysis. A finished run is reused for the table's cache minutes (Analysis Settings). Empty means nobody has run an exact analysis yet.

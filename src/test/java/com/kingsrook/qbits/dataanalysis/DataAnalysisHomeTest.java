@@ -53,7 +53,15 @@ class DataAnalysisHomeTest
       {
          assertThat(widget.getType()).isIn("multiStatistics", "table");
          var data = new DataAnalysisHome().render(new RenderWidgetInput().withWidgetMetaData(widget)).getWidgetData();
-         if(data instanceof TableData table)
+         if(data instanceof TableData table && DataAnalysisHome.SETUP.equals(widget.getName()))
+         {
+            //////////////////////////////////////////////////////////////////////////////
+            // the Setup card is never empty: it says what is set up and what is next //
+            //////////////////////////////////////////////////////////////////////////////
+            assertThat(table.getColumns()).hasSizeLessThanOrEqualTo(4);
+            assertThat(table.getRows()).hasSize(5);
+         }
+         else if(data instanceof TableData table)
          {
             assertThat(table.getColumns()).hasSizeLessThanOrEqualTo(4);
             assertThat(table.getRows()).isEmpty();
