@@ -32,6 +32,16 @@ new DataAnalysisQBitProducer()
 
 The producer installs metadata into the instance. It scans only `com.kingsrook.qbits.dataanalysis.metadata`; helpers and renderers are not scanned as component producers. Set `withParentAppName("admin")` to nest the app under an existing parent.
 
+## Starter defaults and setup
+
+Data Analysis ships no SQL seed: `data_analysis_table_config` depends on which tables the host has and on the code configuration (`defaultMaxRows`, `tableDefaults`, `includeTables`, `excludeTables` and the other defaults), so its rows are computed at run time.
+
+- With no rows, every analyzable table is on with the configured defaults. That is a complete, working setup.
+- Open Analysis Settings and run the table action **Create rows for analyzable tables**. It adds one row per analyzable table that has none, holding the settings that already apply (table defaults over global defaults). Nothing changes until you edit a row. It is insert-only: it never touches an existing row, and running it again only adds rows for tables added since.
+- Rows pin their values: after a row exists, later changes to the code defaults do not reach that table, edit the row instead. `cache_ttl_minutes` is what the exact-run result cache uses for that table (0 turns caching off); `TableConfigDefaultsTest` proves a row changes caching.
+- The **Setup** card on the Analyses home lists settings, result cache, saved analyses, watches and schedules with their state and next step, using the same resolution the runtime uses.
+- Every table has help (shown when it is empty) that says how its rows get created. Saved analyses, stars, schedules, watches and runs are user content or logs and start empty by design.
+
 ## Tables
 
 QQQ names and physical SQL table names are identical. `backendName` in configuration identifies the backend connection; it is not a SQL table name. All tables have `id`, `createDate` and `modifyDate`; SQL columns use inferred snake_case names.

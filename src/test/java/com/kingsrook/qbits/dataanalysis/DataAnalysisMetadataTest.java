@@ -69,7 +69,7 @@ class DataAnalysisMetadataTest
       assertThat(instance.getTables()).containsOnlyKeys(DataAnalysisTables.ALL);
       assertThat(instance.getPossibleValueSources().keySet().stream().filter(name -> name.startsWith("data_analysis_"))).hasSize(16);
       assertThat(instance.getJoins()).hasSize(3);
-      assertThat(instance.getWidgets()).hasSize(8).containsKey(DataAnalysisHome.HOME_WIDGET);
+      assertThat(instance.getWidgets()).hasSize(9).containsKey(DataAnalysisHome.HOME_WIDGET);
       assertThat(instance.getApp("dataAnalysis").getSections().getFirst().getProcesses()).isNullOrEmpty();
       assertThat(instance.getApp("dataAnalysis").getLabel()).isEqualTo("Analyses");
       assertThat(instance.getApp("dataAnalysis").getSections().getFirst().getTables()).containsExactlyElementsOf(DataAnalysisTables.NAV_TABLES);

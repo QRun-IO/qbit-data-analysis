@@ -6,6 +6,10 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 
 ### Added
 
+- Analysis Settings table action **Create rows for analyzable tables**: writes the effective settings as editable `data_analysis_table_config` rows (insert-only, no change in behavior).
+- Setup card on the Analyses home (settings, result cache, saved analyses, watches, schedules).
+- Help bundle `help/qbit-data-analysis.yaml`: every table says what it is for and how its rows get created.
+- `DataAnalysisTablesGuardrailTest` and `TableConfigDefaultsTest` (including a test that a settings row's `cache_ttl_minutes` changes result caching).
 - Phase f saved execution for all seven kinds, core owner-or-shared READ with owner-only WRITE, typed definition validation and viewer-specific field reduction.
 - Idempotent personal star endpoints and visible saved list; transient viewer runs, core CSV/XLSX downloads and QueryStat-backed SQL Workbench handoff.
 - Five-minute owner-session schedule runner, per-recipient FULL access checks and record-scoped reruns, core messaging with attachments, explicit failure statuses/alerts, timezone/weekly/monthly/cron timing and streamed ETL Send now.

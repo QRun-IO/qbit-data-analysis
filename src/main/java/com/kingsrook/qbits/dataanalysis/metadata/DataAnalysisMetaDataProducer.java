@@ -59,6 +59,7 @@ public class DataAnalysisMetaDataProducer extends QBitComponentMetaDataProducer<
       DataAnalysisTables.joins().forEach(output::add);
       DataAnalysisTables.childListWidgets().forEach(output::add);
       output.add(DataAnalysisTables.userKeyType());
+      output.add(com.kingsrook.qbits.dataanalysis.processes.TableConfigDefaultsProcess.process());
       List<QTableMetaData> tables = DataAnalysisTables.tables(getQBitConfig());
       for(QTableMetaData table : tables)
       {
