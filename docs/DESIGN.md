@@ -2,7 +2,7 @@
 
 Approved specification: [QQQ docs/DATA-ANALYSIS.md](https://github.com/QRun-IO/qqq/blob/develop/docs/DATA-ANALYSIS.md), introduced in [PR #1137](https://github.com/QRun-IO/qqq/pull/1137).
 
-Data Analysis will provide profiles, pivots, comparisons, relationships and anomaly watches on existing QQQ data. It will push supported computation to the backend, use bounded streamed fallbacks, enforce the viewer’s permissions and privacy limits, and store configuration, saved definitions, schedules and run history in ordinary visible tables. This repository phase supplies those tables, permissions, configuration, PostgreSQL schema generation and an Analyses home with real session-scoped counts; analytical computation and delivery are planned.
+Data Analysis will provide profiles, pivots, comparisons, relationships and anomaly watches on existing QQQ data. It will push supported computation to the backend, use bounded streamed fallbacks, enforce the viewer’s permissions and privacy limits, and store configuration, saved definitions, schedules and run history in ordinary visible tables. Backend phases b–f are implemented here: typed analysis engines, saved/shared/starred definitions, schedules, exports, SQL handoff and standard widgets with session-scoped data. Specialized analysis frontend work lives in Next. README documents the required shared-read migration and the installed core transport limitations.
 
 ## Phases (spec §11)
 

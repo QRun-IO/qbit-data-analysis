@@ -67,9 +67,13 @@ class DataAnalysisPossibleValuesTest
    void watchSavedAnalysisDependsOnTable() throws Exception
    {
       QInstance instance = TestSupport.instance();
-      QRecord orders = TestSupport.insert(DataAnalysisTables.SAVED, TestSupport.saved("alice", false));
+      for(String name : List.of("orders", "customers"))
+      {
+         instance.addTable(new QTableMetaData().withName(name).withField(new QFieldMetaData("table_name", QFieldType.STRING)));
+      }
+      QRecord orders = TestSupport.insert(DataAnalysisTables.SAVED, TestSupport.saved("alice", false).withValue("table_name", "orders"));
       QRecord customers = TestSupport.insert(DataAnalysisTables.SAVED, TestSupport.saved("alice", false).withValue("table_name", "customers"));
-      TestSupport.insert(DataAnalysisTables.SAVED, TestSupport.saved("bob", true));
+      TestSupport.insert(DataAnalysisTables.SAVED, TestSupport.saved("bob", false).withValue("table_name", "orders"));
       QContext.init(instance, TestSupport.user("alice").withPermissions("data_analysis.saved.read", "data_analysis.watch.edit"));
       QFieldMetaData field = instance.getTable(DataAnalysisTables.WATCH).getField("saved_id");
       assertThat(search(field, Map.of("table_name", "orders"))).extracting(value -> (Object) value.getId()).containsExactly(orders.getValueInteger("id"));

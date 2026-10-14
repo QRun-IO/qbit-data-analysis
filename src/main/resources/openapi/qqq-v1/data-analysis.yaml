@@ -781,6 +781,9 @@ components:
           description: "Blanks."
           nullable: true
       type: "object"
+    DataAnalysisFileV1:
+      format: "binary"
+      type: "string"
     DataAnalysisLimitsV1:
       nullable: true
       properties:
@@ -1154,6 +1157,111 @@ components:
           nullable: true
           type: "string"
       type: "object"
+    DataAnalysisSavedEntryV1:
+      properties:
+        id:
+          type: "integer"
+        name:
+          type: "string"
+        kind:
+          type: "string"
+        tableName:
+          type: "string"
+        tableLabel:
+          type: "string"
+        owner:
+          type: "string"
+        updated:
+          format: "date-time"
+          nullable: true
+          type: "string"
+        shared:
+          type: "boolean"
+        starred:
+          type: "boolean"
+      type: "object"
+    DataAnalysisSavedListV1:
+      properties:
+        analyses:
+          items:
+            $ref: "#/components/schemas/DataAnalysisSavedEntryV1"
+          type: "array"
+      type: "object"
+    DataAnalysisSavedRequestV1:
+      properties:
+        kind:
+          enum:
+          - "COLUMN_PROFILE"
+          - "TABLE_PROFILE"
+          - "PIVOT"
+          - "COMPARE"
+          - "CORRELATION"
+          - "CROSSTAB"
+          - "SHIFT"
+          type: "string"
+        tableName:
+          description: "Source QQQ table name; required for ad hoc export, supplied\
+            \ by the path for SQL."
+          type: "string"
+        request:
+          anyOf:
+          - $ref: "#/components/schemas/DataAnalysisColumnProfileRequestV1"
+          - $ref: "#/components/schemas/DataAnalysisTableProfileRequestV1"
+          - $ref: "#/components/schemas/DataAnalysisPivotRequestV1"
+          - $ref: "#/components/schemas/DataAnalysisCompareRequestV1"
+          - $ref: "#/components/schemas/DataAnalysisCorrelationRequestV1"
+          - $ref: "#/components/schemas/DataAnalysisCrosstabRequestV1"
+          - $ref: "#/components/schemas/DataAnalysisShiftRequestV1"
+          description: "Typed request matching kind. Field names, filters and dimensions\
+            \ use the existing analysis request contracts."
+        format:
+          description: "Required for export; ignored for SQL."
+          enum:
+          - "csv"
+          - "xlsx"
+          type: "string"
+      required:
+      - "kind"
+      - "request"
+      type: "object"
+    DataAnalysisSavedResultV1:
+      properties:
+        kind:
+          enum:
+          - "COLUMN_PROFILE"
+          - "TABLE_PROFILE"
+          - "PIVOT"
+          - "COMPARE"
+          - "CORRELATION"
+          - "CROSSTAB"
+          - "SHIFT"
+          type: "string"
+        warnings:
+          items:
+            type: "string"
+          type: "array"
+        columnProfile:
+          $ref: "#/components/schemas/DataAnalysisColumnProfileV1"
+          nullable: true
+        compare:
+          $ref: "#/components/schemas/DataAnalysisCompareV1"
+          nullable: true
+        correlation:
+          $ref: "#/components/schemas/DataAnalysisCorrelationV1"
+          nullable: true
+        crosstab:
+          $ref: "#/components/schemas/DataAnalysisCrosstabV1"
+          nullable: true
+        pivot:
+          $ref: "#/components/schemas/DataAnalysisPivotV1"
+          nullable: true
+        shift:
+          $ref: "#/components/schemas/DataAnalysisShiftV1"
+          nullable: true
+        tableProfile:
+          $ref: "#/components/schemas/DataAnalysisTableProfileV1"
+          nullable: true
+      type: "object"
     DataAnalysisScatterRequestV1:
       properties:
         tableName:
@@ -1328,6 +1436,21 @@ components:
             \ table; null when invalid."
           nullable: true
           type: "number"
+      type: "object"
+    DataAnalysisSqlV1:
+      properties:
+        available:
+          type: "boolean"
+        note:
+          type: "string"
+        sql:
+          nullable: true
+          type: "string"
+      type: "object"
+    DataAnalysisStarV1:
+      properties:
+        starred:
+          type: "boolean"
       type: "object"
     DataAnalysisStartRunRequestV1:
       additionalProperties: false
@@ -1642,9 +1765,181 @@ info:
   description: "Profiles, pivots, comparisons, distribution shifts, correlations,\
     \ scatter samples, crosstabs and anomaly watch previews as the signed-in user."
   title: "QQQ Middleware API extension: data-analysis"
-  version: "1.3.0"
+  version: "1.4.0"
 openapi: "3.0.3"
 paths:
+  /qqq/v1/qbit/data-analysis/saved/{id}/run:
+    post:
+      description: "Re-run a visible saved analysis as the signed-in viewer. Requires\
+        \ saved READ and source READ/Analyze. Drops unavailable fields with a warning\
+        \ and returns the result typed by kind; inaccessible required axes or predicates\
+        \ produce no result."
+      parameters:
+      - description: "Owner-scoped analysis run or watch id."
+        in: "path"
+        name: "id"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataAnalysisSavedResultV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Run a saved analysis"
+  /qqq/v1/qbit/data-analysis/saved:
+    get:
+      description: "List core-visible saved analyses with name, kind, source table\
+        \ label, owner, shared state, this viewer's starred flag and last update."
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataAnalysisSavedListV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "List visible saved analyses"
+  /qqq/v1/qbit/data-analysis/saved/{id}/star:
+    delete:
+      description: "Remove the signed-in user's star on a visible saved analysis.\
+        \ Idempotent; uses standard saved delete permission and owner locks."
+      parameters:
+      - description: "Owner-scoped analysis run or watch id."
+        in: "path"
+        name: "id"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataAnalysisStarV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Unstar a saved analysis"
+    put:
+      description: "Star a visible saved analysis for the signed-in user. Idempotent;\
+        \ uses standard saved insert permission and the personal star record lock."
+      parameters:
+      - description: "Owner-scoped analysis run or watch id."
+        in: "path"
+        name: "id"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataAnalysisStarV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Star a saved analysis"
+  /qqq/v1/qbit/data-analysis/tables/{table}/sql:
+    post:
+      description: "Execute a typed analysis as the viewer and capture the main RDBMS\
+        \ aggregate SQL from core QueryStat. Requires installed SQL Workbench and\
+        \ its access permission. Non-RDBMS backends report unavailable; SQL is for\
+        \ reading and record security remains enforced at runtime."
+      parameters:
+      - description: "QQQ table name to analyze."
+        in: "path"
+        name: "table"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataAnalysisSavedRequestV1"
+        required: true
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataAnalysisSqlV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Read an analysis aggregate SQL statement"
+  /qqq/v1/qbit/data-analysis/export:
+    post:
+      description: "Execute a typed analysis as the signed-in viewer and download\
+        \ its result table as CSV or XLSX. Requires source READ/Analyze and FULL fields;\
+        \ uses core report formats."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataAnalysisSavedRequestV1"
+        required: true
+      responses:
+        200:
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                $ref: "#/components/schemas/DataAnalysisFileV1"
+            text/csv:
+              schema:
+                $ref: "#/components/schemas/DataAnalysisFileV1"
+          description: "Analysis result file"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Export an analysis result"
+  /qqq/v1/qbit/data-analysis/saved/{id}/export:
+    get:
+      description: "Re-run a visible saved analysis as the viewer, applying current\
+        \ source permissions and dropping unavailable fields, then download its result\
+        \ table as CSV or XLSX."
+      parameters:
+      - description: "Visible saved analysis id."
+        in: "path"
+        name: "id"
+        required: true
+        schema:
+          type: "integer"
+      - description: "Result file format."
+        in: "query"
+        name: "format"
+        required: true
+        schema:
+          enum:
+          - "csv"
+          - "xlsx"
+          type: "string"
+      responses:
+        200:
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                $ref: "#/components/schemas/DataAnalysisFileV1"
+            text/csv:
+              schema:
+                $ref: "#/components/schemas/DataAnalysisFileV1"
+          description: "Analysis result file"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Export a saved analysis"
   /qqq/v1/qbit/data-analysis/tables/{table}/capabilities:
     get:
       description: "Discover whether the current user can analyze this table, readable\

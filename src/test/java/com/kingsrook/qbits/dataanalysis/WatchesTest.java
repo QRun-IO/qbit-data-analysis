@@ -319,9 +319,9 @@ class WatchesTest
       evaluator.setEnabled(disabled.getValue("id"), false);
       assertThat(evaluator.evaluateEnabled(NOW)).isEqualTo(1);
       assertThat(stored(disabled).getValue("last_evaluated_at")).isNull();
-      String html = DataAnalysisHome.render(NOW);
-      assertThat(html.indexOf("Firing &middot; Spike")).isLessThan(html.indexOf("Ok &middot; Drop"));
-      assertThat(html).contains("/" + spike.getValue("id") + "\"");
+      var data = (com.kingsrook.qqq.backend.core.model.dashboard.widgets.TableData) DataAnalysisHome.render(DataAnalysisHome.FIRING, NOW);
+      assertThat(data.getRows()).hasSize(1);
+      assertThat(data.getRows().getFirst().get("c0").toString()).contains("/" + spike.getValue("id") + "\"");
       assertThat(instance.getProcess(WatchActions.SCHEDULED).getIsHidden()).isTrue();
       assertThat(instance.getProcess(WatchActions.EVALUATE).getTableName()).isEqualTo(DataAnalysisTables.WATCH);
    }
@@ -350,7 +350,7 @@ class WatchesTest
    void savedAnalysisResolvesAsOwnerAndNoAlertsInstallationStillStoresState() throws Exception
    {
       QRecord saved = TestSupport.insert(DataAnalysisTables.SAVED, TestSupport.saved("alice", false)
-         .withValue("definition_json", "{\"values\":[{\"operator\":\"COUNT\"}]}"));
+         .withValue("kind", "PIVOT").withValue("table_name", "orders").withValue("definition_json", "{\"values\":[{\"operator\":\"COUNT\"}]}"));
       QRecord definition = WatchDetectorsTest.definition("SPIKE", "COUNT", "{\"k\":3}")
          .withValue("saved_id", saved.getValue("id")).withValue("table_name", null).withValue("metric_json", null);
       QRecord watch = TestSupport.insert(DataAnalysisTables.WATCH, definition);

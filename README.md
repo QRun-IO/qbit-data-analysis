@@ -6,7 +6,7 @@ Statistical analysis and data dives on any QQQ table, filter or saved view: prof
 
 The host API provides column and table profiles, pivots, comparisons, distribution shifts, correlations, scatter samples, crosstabs, distinct-value pages, duplicate groups, drill-through filters, privacy suppression, and asynchronous exact profile runs with a persistent per-user cache. Metadata, six visible tables, owner locks, PostgreSQL DDL generation and the Analyses home are also available.
 
-Fourteen HTTP operations are available under `/qqq/v1/qbit/data-analysis`; the Analyze UI is a later phase. Pivot and relationship backends are available. Anomaly watches, their scheduled evaluator and alert transitions are available. Saved-analysis execution, scheduled delivery and exports remain later phases.
+Twenty-one HTTP operations are available under `/qqq/v1/qbit/data-analysis` (extension **1.4.0**). Saved execution, shared reads, personal stars, scheduled email, CSV/XLSX exports, SQL Workbench handoff and standard dashboard widgets are implemented. The separate Analyze/pivot/relationship frontend remains outside this repository.
 
 ## Requirements
 
@@ -66,7 +66,7 @@ The four `table_name` fields use core's `tables` possible-value source; an exist
 
 Every engine operation and home count runs under the current `QContext` session with `PermissionEnforcement.ENFORCE`. A denied section explains the missing permission instead of showing zero. Mine and starred counts explicitly filter the current user even for administrators. Shared counts include only readable shared rows. Stars pointing at unreadable or deleted saved analyses do not count. Run counts cover starts within the last seven days, excluding future rows.
 
-Saved analyses have a READ_AND_WRITE lock on `owner_user_id`; stars and runs have locks on `user_id`. Schedules inherit the saved analysis owner's lock through their join. Null owners are denied. The host's authentication/session adapter must supply:
+Saved analyses have a WRITE lock on `owner_user_id` and a separate READ lock on the hidden `read_owner_user_id` projection. Core pre-insert/update customizers set that projection to the owner for private rows and null for shared rows; the READ lock allows null. This expresses **owner OR shared READ**, while core retains owner-only writes and administrator all-access keys. Stars and runs have locks on `user_id`. Schedules inherit the saved analysis owner's lock through their join. Null owners are denied. The host's authentication/session adapter must supply:
 
 ```java
 session.withSecurityKeyValue("data_analysis_user", session.getUser().getIdReference());
@@ -77,7 +77,18 @@ session.withPermission("data_analysis.admin")
 
 QQQ permissions and security-key values are separate. An admin permission alone does not bypass record locks. User-id fields must use the same stable string identity as `QUser.idReference`.
 
-**Shared READ is deliberately restricted in this scaffold.** The ordinary owner lock does not express owner OR shared while keeping writes owner-only, so setting `shared=true` currently does not expose a saved analysis to other users. Phase f will introduce separate read and write policies: reads permit owner OR shared only after checking `data_analysis.saved.read`; writes retain owner/admin checks. Query, get, count, joins, child lists and exports will receive cross-user regression tests before enabling shared READ. Collaboration sharing and favorites (§7.3, qqq#1136) will then replace the local sharing/star contracts. Shared analyses must always execute as their viewer.
+**Shared READ is enabled through core record locks.** A viewer still needs `data_analysis.saved.read`. Query/get/count, standard CRUD, saved runs, lists and exports use core enforcement. Shared viewers cannot edit, delete, change ownership, or schedule another owner's analysis. No custom query filter grants access. Sharing exposes the saved definition and metadata, not the owner's data: every run computes under the viewer's source-table READ/Analyze permissions and field policy. There is no per-recipient/group sharing or access-request workflow yet; collaboration's sharing contract ([qqq#1136](https://github.com/QRun-IO/qqq/issues/1136)) will replace the local flag. Stars move to `collaboration_favorite` when collaboration ships.
+
+**Existing databases must migrate before enabling the new metadata.** A missing/null read-owner projection would make an old private row readable. Apply this through the host's migration system while writes are stopped, before deploying this version:
+
+```sql
+ALTER TABLE data_analysis_saved ADD COLUMN IF NOT EXISTS read_owner_user_id VARCHAR(250);
+UPDATE data_analysis_saved
+   SET read_owner_user_id = CASE WHEN shared IS TRUE THEN NULL ELSE owner_user_id END;
+ALTER TABLE data_analysis_schedule ALTER COLUMN last_status TYPE TEXT;
+```
+
+The metadata-generated create script includes these fields for new installations; it does not migrate existing databases. Fix older placeholder definitions (such as `{}` for a column profile) to valid typed requests. Edit existing enabled schedules through core CRUD to validate recipients and initialize `next_run_at`.
 
 Minimum group size defaults to 0 (off). Hosts should set it for personal-data tables. Groups, bins and distinct listings below N are merged into an Other row with no value or drill. Min/max, percentiles, mean and standard deviation are suppressed when the assessed population is below N. Outlier listings and their count's drill are removed whenever the guard is enabled. The guard runs before chart construction and before `result_json` is stored.
 
@@ -233,15 +244,55 @@ A transition from OK to FIRING raises through core `QAlerts`, with the watch rec
 
 `DataAnalysisSchema.postgresScript(config)` generates the new fields and owner requirement. Existing installations must add `date_field VARCHAR(250)`, `owner_user_id VARCHAR(250)`, `last_value NUMERIC`, and `last_message TEXT`, then backfill each watch's actual owner/date field before making the first two columns NOT NULL and enabling evaluation. The CREATE-IF-NOT-EXISTS generator does not migrate existing tables.
 
+## Saved analyses, stars and exports
+
+Create/edit saved analyses through ordinary core table CRUD. `kind` selects `COLUMN_PROFILE`, `TABLE_PROFILE`, `PIVOT`, `COMPARE`, `CORRELATION`, `CROSSTAB` or `SHIFT`; `definition_json` stores that kind's typed request. For example, a column profile has `{"fieldName":"amount","filter":{...}}`, and a pivot has `{"rows":[{"field":"status"}],"values":[{"operator":"COUNT"}]}`. `table_name` identifies the source table; a supplied `tableName` in the JSON must match. The customizers reject malformed JSON, missing selections, nonexistent tables/fields and invalid partial edits with plain record errors. A typed definition filter takes precedence over legacy `filter_json`.
+
+`POST /saved/{id}/run` re-runs as the viewer and returns `{kind, warnings, columnProfile, tableProfile, pivot, compare, correlation, crosstab, shift}`, with the matching typed member populated. Selected fields without FULL analysis access are removed and `Some fields are not available to you` is returned. If a required axis, all required selections, or a filter predicate is unavailable, no computation is performed and the typed members are null; filters are never dropped to broaden the population. Saved profile runs are transient, so they do not require run-table write permission and cannot reuse an owner's cache.
+
+`GET /saved` lists core-visible saved metadata with each viewer's `starred` flag. `PUT /saved/{id}/star` and `DELETE /saved/{id}/star` are idempotent and always target the signed-in user, using standard saved INSERT/DELETE grants. The local star table remains available through ordinary CRUD and has a unique `(saved_id,user_id)` key.
+
+`GET /saved/{id}/export?format=csv|xlsx` re-runs as the viewer. `POST /export` accepts a discriminated request:
+
+```json
+{"kind":"PIVOT","tableName":"orders","request":{"rows":[{"field":"status"}],"values":[{"operator":"COUNT"}]},"format":"xlsx"}
+```
+
+Both routes return file bytes with attachment headers. Core `ReportFormat` CSV/XLSX streamers write computed result tables: profile metrics/top values, pivot grids, comparisons, correlation/crosstab tables and shift buckets. Values retain their formatting and privacy suppression. Warnings are included in downloads. All paths above are relative to `/qqq/v1/qbit/data-analysis` and appear in assistant operation discovery.
+
+## Scheduled delivery
+
+Configure `schedulerName`, `messagingProviderName`, `fromAddress`, `ownerSessionSupplier` and `recipientAddressSupplier` in `DataAnalysisQBitConfig`. The session supplier resolves both owners and recipients by their stable user id; without it, the authentication module's `createAutomatedSessionForUser` is used. The address supplier maps those ids to verified directory email addresses; schedule recipients are **user ids**, never arbitrary email addresses.
+
+Schedules use `recipients` as a JSON array (1–100 ids), `format` as `HTML_SUMMARY`, `CSV` or `XLSX`, and either Quartz cron (including the seconds field) or `frequency` + `day` + `time` + `time_zone`. Weekly days are ISO Monday=1 through Sunday=7; monthly days are 1–31, clamped to the last day of shorter months. Times are local ISO times such as `09:00`; omitted time zone is UTC. Spring-forward gaps move forward, and the first occurrence is chosen in an autumn overlap. `next_run_at` is strictly after the evaluation time.
+
+The hidden `data_analysis_run_schedules` process repeats every 300 seconds when a scheduler is configured. Its scheduler session needs `data_analysis_run_schedules.hasAccess`. Inventory/status operations use a narrow maintenance session; source computation always switches to the saved owner. Every recipient must resolve to the correct identity and pass source READ, Analyze and FULL access for all selected/filter fields. Different recipients receive a fresh computation under their own record locks. Skipped ids appear in `last_status`.
+
+Email includes escaped HTML headline metrics and a result table (first 20 rows for pivots), with the requested CSV/XLSX attachment via core `SendMessageAction`. `HTML_SUMMARY` has no attachment. Missing messaging configuration and delivery errors persist an explicit failure and raise the declared **`data.analysis.schedule.failed`** alert. Core rejects underscores in alert names, so the spec's `data_analysis.schedule_failed` spelling cannot be registered. With no alert sink, core logs the signal and the status remains visible.
+
+The installed core's stock `EMAIL` provider silently ignores `SendMessageInput.attachmentList`. CSV/XLSX schedules therefore reject that provider with an explicit status/alert; configure an attachment-capable core messaging provider. A test provider verifies the complete message and attachment contract. This qbit does not alter core's SMTP transport.
+
+**Send now** uses the standard streamed ETL Review/Result record action. Reviews do not deliver; execution reauthorizes and reports actual outcomes. Disabled schedules can be sent manually. A runtime serializes scheduled and manual attempts, but there is no cross-node transaction or exactly-once email guarantee; run the scheduler on one node. New configurations compute their next occurrence; failed attempts advance to the next occurrence instead of retrying every five minutes.
+
+## SQL Workbench and dashboard widgets
+
+`POST /tables/{table}/sql` accepts `{kind,request}` and returns `{available,sql,note}`. It requires an installed SQL Workbench app/table and the configured app access permission (default `sql_workbench.hasAccess`), plus source permissions. Memory/non-RDBMS backends report unavailable. The engine executes the request as the viewer and reads the actual main aggregate's core `QueryStat`; grouped dimensions and the widest metric batch identify the main statement. Bound `?` placeholders remain, and the note states that QQQ applies record security at runtime and the SQL is for reading.
+
+Core exposes `QueryStat` on the backend but not the backend reference on `AggregateAction`. A narrow read-only reflective bridge accesses that reference after normal core execution. Query-stat capability is enabled only on the request's cloned table metadata; no global logger or statistics-manager settings change. If core changes that private field or does not provide SQL, the endpoint reports unavailable rather than fabricating a statement.
+
+The Analyses home uses standard `multiStatistics` and `table` widgets: mine/shared/starred counts, enabled/firing watches, my runs in the last seven days, starred analysis links, firing watches and recent run links. All counts and rows use the viewer's session. Tables have at most four columns and use Next's responsive table/card renderer, with explicit empty/permission states.
+
+`SavedAnalysisWidget.widget()` supplies the **`DATA_ANALYSIS_SAVED`** metadata. Clone/rename it for another dashboard and set `.withDefaultValue("savedId", id)`. Its standard chart renderer re-runs as the viewer, shows formatted headline metrics, projects the semantic series/pivot/crosstab into a standard chart, and links back to the saved record. It never displays an owner's cached result. The standard chart is a dashboard summary; the full analysis UI remains responsible for specialized box/heatmap presentations.
+
 ## Adopting in another app
 
 1. Add a backend, install the producer and run the usual `QInstanceValidator`.
 2. For PostgreSQL, obtain `DataAnalysisSchema.postgresScript(config)` and apply it through your application's migration system. It derives fields and unique indexes from table metadata. It does not execute DDL or upgrade existing schemas.
 3. Map user-id security keys and permissions in the authentication adapter. Configure core audit persistence if field audit history is needed.
 4. Review per-table include/exclude sets, limits and minimum group sizes before enabling analysis. Integrate Saved Analyses and Watches with host ESB/Quick Search when those optional host features are installed; this scaffold does not add those dependencies.
-5. Use the Analyses home as the owner of analysis data. Other dashboards should link there until saved-analysis widgets are implemented.
+5. Use the Analyses home as the owner of analysis data. Other dashboards can place a configured DATA_ANALYSIS_SAVED widget linked to its saved record.
 
-Phase **b** profiles, drill-through, runs/cache and HTTP endpoints, phase **c** pivot backend, phase **d** compare/relationships backend, and phase **e** anomaly watches are implemented. Remaining work: **b** analysis UI; **c** pivot UI; **d** comparison/relationship UI; **f** saved-analysis execution, sharing, stars integration, schedules, chart widgets, full home and exports. The current home summarizes stored rows; the host facade executes profiles. The home does not send deliveries.
+Backend phases **b–f** are implemented, including saved/shared/starred analyses, schedules, standard widgets, home, export and SQL handoff. The separate profile, pivot and relationship frontend remains outside this repository.
 
 ## Build
 

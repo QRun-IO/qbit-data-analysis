@@ -93,6 +93,11 @@ class StatisticsTest
       // scipy.stats.chi2_contingency([[40,10],[20,30],[4,8]], correction=False); four rare rows merge into Other.
       assertThat(Statistics.chiSquare(new double[][] {{40, 10}, {20, 30}, {1, 2}, {1, 2}, {1, 2}, {1, 2}}, false).pValue())
          .isCloseTo(5.993665986784811e-5, within(1e-14));
+      // A sparse independence table (the last row has a single record) pools its smallest categories into
+      // Other until every expected count is >= 5, instead of giving up with "too few records".
+      double[][] sparse = {{114, 39, 11}, {99, 28, 4}, {93, 26, 5}, {68, 13, 0}, {32, 6, 2}, {28, 9, 1}, {14, 2, 1}, {7, 2, 0}, {4, 1, 0}, {2, 1, 0}, {1, 0, 0}};
+      assertThat(Statistics.chiSquare(sparse, false).applicable()).isTrue();
+      assertThat(Statistics.chiSquare(sparse, false).pValue()).isBetween(0.0, 1.0);
       assertThat(Statistics.chiSquare(new double[][] {{3, 3}, {3, 3}}, true).applicable()).isFalse();
       assertThat(Statistics.chiSquare(new double[][] {{20, 1}, {20, 1}}, true).applicable()).isFalse();
       assertThat(Statistics.chiSquare(new double[][] {{1, 0}, {10, 10}}, true).applicable()).isFalse();

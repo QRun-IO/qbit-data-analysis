@@ -20,9 +20,7 @@
 
 package com.kingsrook.qbits.dataanalysis.stats;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Locale;
 
 /*******************************************************************************
@@ -130,24 +128,52 @@ public final class Statistics
          {
             return (unavailable(test, "invalid counts"));
          }
-         if(Arrays.stream(row).sum() < 2)
+         if(homogeneity && Arrays.stream(row).sum() < 2)
          {
             return (unavailable(test, "too few records"));
          }
       }
-      double[][] table = poolColumns(observed);
-      if(!homogeneity)
+
+      ////////////////////////////////////////////////////////////////////////////////
+      // pool the smallest category into Other until every expected count is >= 5. //
+      // homogeneity compares fixed samples (rows), so only columns are pooled.     //
+      ////////////////////////////////////////////////////////////////////////////////
+      double[][] table = Arrays.stream(observed).map(double[]::clone).toArray(double[][]::new);
+      boolean rowOther    = false;
+      boolean columnOther = false;
+      while(!validExpected(table))
       {
-         table = transpose(poolColumns(transpose(table)));
-         double[][] rowFirst = poolColumns(transpose(poolColumns(transpose(observed))));
-         if(validExpected(rowFirst) && (!validExpected(table) || rowFirst.length * rowFirst[0].length > table.length * table[0].length))
+         double[] rows = Arrays.stream(table).mapToDouble(r -> Arrays.stream(r).sum()).toArray();
+         double[] cols = Arrays.stream(transpose(table)).mapToDouble(r -> Arrays.stream(r).sum()).toArray();
+         int smallestRow = homogeneity ? -1 : smallestIndex(rows, rowOther);
+         int smallestCol = smallestIndex(cols, columnOther);
+         boolean poolRow = smallestRow >= 0 && (smallestCol < 0 || rows[smallestRow] <= cols[smallestCol]);
+         if(poolRow)
          {
-            table = rowFirst;
+            table = transpose(poolInto(transpose(table), smallestRow, rowOther));
+            rowOther = true;
+         }
+         else if(smallestCol >= 0)
+         {
+            table = poolInto(table, smallestCol, columnOther);
+            columnOther = true;
+         }
+         else
+         {
+            break;
+         }
+         if(table.length < 2 || table[0].length < 2)
+         {
+            break;
          }
       }
       if(table.length < 2 || table[0].length < 2)
       {
          return (unavailable(test, "too few categories after merging expected counts below 5 into Other"));
+      }
+      if(!validExpected(table))
+      {
+         return (unavailable(test, homogeneity ? "too few records" : "expected counts below 5 after merging into Other"));
       }
       double[] rows = Arrays.stream(table).mapToDouble(r -> Arrays.stream(r).sum()).toArray();
       double[] cols = Arrays.stream(transpose(table)).mapToDouble(r -> Arrays.stream(r).sum()).toArray();
@@ -158,10 +184,6 @@ public final class Statistics
          for(int j = 0; j < cols.length; j++)
          {
             double expected = rows[i] * cols[j] / total;
-            if(expected < 5)
-            {
-               return (unavailable(test, "expected counts below 5 after merging into Other"));
-            }
             statistic += Math.pow(table[i][j] - expected, 2) / expected;
          }
       }
@@ -171,51 +193,74 @@ public final class Statistics
       return (new Result(test, statistic, df, p, true, sentence(p), v));
    }
 
+
+
    /*******************************************************************************
-    ** Rare rows must not force every column into Other when row pooling alone
-    ** would suffice. Prefer the valid pooling order retaining more categories.
+    ** Every expected count is at least five (and the table is at least 2 by 2).
     *******************************************************************************/
    private static boolean validExpected(double[][] table)
    {
+      if(table.length < 2 || table[0].length < 2)
+      {
+         return (false);
+      }
       double[] rows = Arrays.stream(table).mapToDouble(r -> Arrays.stream(r).sum()).toArray();
       double[] columns = Arrays.stream(transpose(table)).mapToDouble(r -> Arrays.stream(r).sum()).toArray();
-      return (rows.length >= 2 && columns.length >= 2
-         && Arrays.stream(rows).min().orElse(0) * Arrays.stream(columns).min().orElse(0) / Arrays.stream(rows).sum() >= 5);
+      double total = Arrays.stream(rows).sum();
+      return (total > 0 && Arrays.stream(rows).min().orElse(0) * Arrays.stream(columns).min().orElse(0) / total >= 5);
    }
 
+
+
    /*******************************************************************************
-    ** Pool all categories with any expected count below five into one final column.
+    ** The index of the smallest category, not counting a trailing Other (which
+    ** only grows), or -1 when there is nothing left to pool.
     *******************************************************************************/
-   private static double[][] poolColumns(double[][] table)
+   private static int smallestIndex(double[] totals, boolean lastIsOther)
    {
-      double[] rows = Arrays.stream(table).mapToDouble(r -> Arrays.stream(r).sum()).toArray();
-      double total = Arrays.stream(rows).sum();
-      List<Integer> kept = new ArrayList<>();
-      List<Integer> other = new ArrayList<>();
-      for(int j = 0; j < table[0].length; j++)
+      int limit = lastIsOther ? totals.length - 1 : totals.length;
+      if(limit <= (lastIsOther ? 0 : 1))
       {
-         double sum = 0;
-         for(double[] row : table)
-         {
-            sum += row[j];
-         }
-         double column = sum;
-         (Arrays.stream(rows).anyMatch(r -> r * column / total < 5) ? other : kept).add(j);
+         return (-1);
       }
-      double[][] result = new double[rows.length][kept.size() + (other.isEmpty() ? 0 : 1)];
-      for(int i = 0; i < rows.length; i++)
+      int smallest = 0;
+      for(int i = 1; i < limit; i++)
       {
-         for(int j = 0; j < kept.size(); j++)
+         if(totals[i] < totals[smallest])
          {
-            result[i][j] = table[i][kept.get(j)];
+            smallest = i;
          }
-         for(int j : other)
+      }
+      return (smallest);
+   }
+
+
+
+   /*******************************************************************************
+    ** Move one column into a trailing Other column (creating it if needed).
+    *******************************************************************************/
+   private static double[][] poolInto(double[][] table, int column, boolean hasOther)
+   {
+      int columns = table[0].length;
+      int width = hasOther ? columns - 1 : columns;
+      double[][] result = new double[table.length][width];
+      for(int i = 0; i < table.length; i++)
+      {
+         int target = 0;
+         for(int j = 0; j < columns; j++)
          {
-            result[i][kept.size()] += table[i][j];
+            if(j == column || (hasOther && j == columns - 1))
+            {
+               continue;
+            }
+            result[i][target++] = table[i][j];
          }
+         result[i][width - 1] = table[i][column] + (hasOther ? table[i][columns - 1] : 0);
       }
       return (result);
    }
+
+
 
    /*******************************************************************************
     ** Transposition lets independence apply the same pooling rule to both axes.

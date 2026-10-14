@@ -33,7 +33,6 @@ import com.kingsrook.qbits.dataanalysis.result.Significance;
 import com.kingsrook.qbits.dataanalysis.result.ValueType;
 import com.kingsrook.qbits.dataanalysis.stats.Statistics;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
-import com.kingsrook.qqq.backend.core.actions.tables.AggregateAction;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
@@ -79,7 +78,7 @@ public class RelationshipSupport extends StandInAnalysisBackend
    {
       input.withFilter(DrillFilters.restoreTypes(table, input.getFilter())).withAllowStreamedFallback(true).withStreamedRowLimit(config.getMaxRows());
       input.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
-      var output = new AggregateAction().execute(input);
+      var output = com.kingsrook.qbits.dataanalysis.saved.SqlHandoff.aggregate(input);
       if(Boolean.TRUE.equals(output.getTruncated()))
       {
          throw new QBadRequestException("Analysis exceeds the streamed row limit; narrow the filter.");

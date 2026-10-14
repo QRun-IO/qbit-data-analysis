@@ -116,6 +116,7 @@ public class DataAnalysisSchemas
       result.put("DataAnalysisPivotV1", new DataAnalysisPivotV1().toSchema());
       result.putAll(RelationshipSchemas.components());
       result.putAll(WatchSchemas.components());
+      result.putAll(SavedSchemas.components());
       return (result);
    }
 
