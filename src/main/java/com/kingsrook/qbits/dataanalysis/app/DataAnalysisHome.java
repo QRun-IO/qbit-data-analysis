@@ -63,6 +63,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
  *******************************************************************************/
 public class DataAnalysisHome extends AbstractWidgetRenderer
 {
+   public static final String SETUP = "dataAnalysisSetup";
    public static final String HOME_WIDGET = "dataAnalysisHome";
    public static final String STARRED = "dataAnalysisStarred";
    public static final String FIRING = "dataAnalysisFiring";
@@ -81,7 +82,7 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
     *******************************************************************************/
    public static List<QWidgetMetaData> widgets()
    {
-      return (List.of(widget(), widget(STARRED, "Starred analyses", WidgetType.TABLE), widget(FIRING, "Firing watches", WidgetType.TABLE), widget(RECENT, "My recent runs", WidgetType.TABLE)));
+      return (List.of(widget(SETUP, "Setup", WidgetType.TABLE), widget(), widget(STARRED, "Starred analyses", WidgetType.TABLE), widget(FIRING, "Firing watches", WidgetType.TABLE), widget(RECENT, "My recent runs", WidgetType.TABLE)));
    }
 
    /*******************************************************************************
@@ -127,6 +128,10 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
     *******************************************************************************/
    public static QWidgetData render(String name, Instant now) throws QException
    {
+      if(SETUP.equals(name))
+      {
+         return (setup());
+      }
       if(HOME_WIDGET.equals(name))
       {
          return (statistics(now));
@@ -162,6 +167,31 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
          data.getRows().add(FIRING.equals(name)
             ? values(link(source, row.getValue("id"), row.getValueString("detector")), label, row.getValue("last_evaluated_at"), row.getValue("last_message"))
             : values(link(source, row.getValue("id"), row.getValueString("operation")), label, row.getValue("status"), row.getValue("started_at")));
+      }
+      return (data);
+   }
+
+   /*******************************************************************************
+    ** The Setup card: each settings or content table, its state and the next step.
+    *******************************************************************************/
+   public static TableData setup() throws QException
+   {
+      TableData data = new TableData("Setup", List.of(new TableData.Column("html", "Part", "c0", null, "left"), new TableData.Column("text", "State", "c1", null, "left"),
+         new TableData.Column("text", "What it means", "c2", null, "left"), new TableData.Column("text", "Next step", "c3", null, "left")), new ArrayList<>())
+         .withNoRowsFoundHTML("Nothing to set up.").withRowsPerPage(10);
+      for(DataAnalysisSetupStatus.Item item : DataAnalysisSetupStatus.load())
+      {
+         String path = QContext.getQInstance().getTablePath(item.tableName());
+         String part = "<a href=\"" + escape(path) + "\">" + escape(item.label()) + "</a>";
+         String state = switch(item.state())
+         {
+            case OK -> "Set up";
+            case DEFAULT -> "Using defaults";
+            case OPTIONAL -> "Optional";
+            case UNAVAILABLE -> "Unavailable";
+            case UNKNOWN -> "Needs attention";
+         };
+         data.getRows().add(values(part, state, item.detail(), item.nextStep()));
       }
       return (data);
    }
@@ -263,7 +293,7 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
    /*******************************************************************************
     ** Explicit checks distinguish denied sections from empty sections.
     *******************************************************************************/
-   private static boolean canRead(String table)
+   static boolean canRead(String table)
    {
       CountInput input = new CountInput(table);
       input.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
@@ -281,7 +311,7 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
    /*******************************************************************************
     ** Counts use the viewer's session and explicitly enforce permissions.
     *******************************************************************************/
-   private static int count(String table, QQueryFilter filter) throws QException
+   static int count(String table, QQueryFilter filter) throws QException
    {
       CountInput input = new CountInput(table).withFilter(filter);
       input.setPermissionEnforcement(PermissionEnforcement.ENFORCE);

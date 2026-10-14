@@ -171,6 +171,7 @@ public class DataAnalysisQBitProducer implements QBitMetaDataProducer<DataAnalys
       {
          instance.getApp(qBitConfig.getParentAppName()).withChild(instance.getApp(qBitConfig.getAppName()));
       }
+      com.kingsrook.qbits.dataanalysis.help.DataAnalysisHelp.apply(instance, qBitConfig);
       return (new MetaDataProducerMultiOutput());
    }
 }
