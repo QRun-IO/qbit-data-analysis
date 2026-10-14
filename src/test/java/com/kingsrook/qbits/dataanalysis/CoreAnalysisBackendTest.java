@@ -202,4 +202,28 @@ class CoreAnalysisBackendTest extends EngineFixture
          });
       }
    }
+
+   /*******************************************************************************
+    ** Core fallback limits never produce a falsely exact pivot drill.
+    *******************************************************************************/
+   @Test
+   void partialPivotDisablesDrills() throws Exception
+   {
+      capabilities(Set.of());
+      config.withDefaultMaxRows(3);
+      service.getConfigResolver().invalidate();
+      var request = new com.kingsrook.qbits.dataanalysis.result.PivotRequest().withTableName("orders")
+         .withRows(java.util.List.of(new com.kingsrook.qbits.dataanalysis.result.PivotDimension().withField("created")
+            .withDateBucket(com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.DateBucketUnit.DAY)))
+         .withValues(java.util.List.of(new com.kingsrook.qbits.dataanalysis.result.PivotMeasure().withField("amount")
+            .withOperator(com.kingsrook.qbits.dataanalysis.result.PivotMeasure.Operator.PERCENTILE).withPercentile(new java.math.BigDecimal("0.5"))));
+      var result = service.pivot(request);
+      assertThat(result.getEstimate()).isTrue();
+      assertThat(result.getWarnings()).anyMatch(w -> w.startsWith("Partial pivot"));
+      assertThat(result.getCells()).isNotEmpty().allSatisfy(c -> assertThat(c.getValues()).allSatisfy(m ->
+      {
+         assertThat(m.getDrill()).isNull();
+         assertThat(m.getEstimate()).isTrue();
+      }));
+   }
 }

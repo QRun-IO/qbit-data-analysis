@@ -26,6 +26,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
+import com.kingsrook.qbits.dataanalysis.engine.CoreTierFieldAccessResolver;
+import com.kingsrook.qbits.dataanalysis.engine.FieldAnalysisAccessResolver;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitConfig;
 
@@ -35,6 +38,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitConfig;
  *******************************************************************************/
 public class DataAnalysisQBitConfig implements QBitConfig
 {
+   private Supplier<FieldAnalysisAccessResolver> fieldAnalysisAccessResolver = CoreTierFieldAccessResolver::defaultResolver;
    private String backendName;
    private String schedulerName;
    private String appName = "dataAnalysis";
@@ -385,6 +389,23 @@ public class DataAnalysisQBitConfig implements QBitConfig
    public DataAnalysisQBitConfig withTableDefaults(Map<String, TableAnalysisDefaults> tableDefaults)
    {
       this.tableDefaults = tableDefaults;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Host override for session-aware field analysis access.
+    *******************************************************************************/
+   public Supplier<FieldAnalysisAccessResolver> getFieldAnalysisAccessResolver()
+   {
+      return (fieldAnalysisAccessResolver);
+   }
+
+   /*******************************************************************************
+    ** Configure an instance supplier; each service resolves one policy instance.
+    *******************************************************************************/
+   public DataAnalysisQBitConfig withFieldAnalysisAccessResolver(Supplier<FieldAnalysisAccessResolver> resolver)
+   {
+      this.fieldAnalysisAccessResolver = java.util.Objects.requireNonNull(resolver);
       return (this);
    }
 }

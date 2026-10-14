@@ -25,7 +25,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
-import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.values.QPossibleValueTranslator;
@@ -64,7 +63,7 @@ public final class AnalysisLabels
     *******************************************************************************/
    public static String translate(QFieldMetaData field, Serializable value) throws QException
    {
-      return (translate(field, value, new LinkedHashSet<>()));
+      return (translate(field, value, CoreTierFieldAccessResolver.defaultResolver()));
    }
 
 
@@ -72,7 +71,15 @@ public final class AnalysisLabels
    /*******************************************************************************
     ** Resolve nested PVS label fields without invoking core's trusted lookup path.
     *******************************************************************************/
-   private static String translate(QFieldMetaData field, Serializable value, Set<String> visited) throws QException
+   public static String translate(QFieldMetaData field, Serializable value, FieldAnalysisAccessResolver access) throws QException
+   {
+      return (translate(field, value, new LinkedHashSet<>(), access));
+   }
+
+   /*******************************************************************************
+    ** Resolve nested labels only through FULL fields under the host policy.
+    *******************************************************************************/
+   private static String translate(QFieldMetaData field, Serializable value, Set<String> visited, FieldAnalysisAccessResolver access) throws QException
    {
       if(value == null)
       {
@@ -98,7 +105,7 @@ public final class AnalysisLabels
          List<String> labelFields = original.getRecordLabelFields() == null ? List.of() : original.getRecordLabelFields();
          for(String labelField : labelFields)
          {
-            if(!table.getFields().containsKey(labelField) || !FieldSecurityLockHelper.isFieldAccessible(table.getField(labelField)))
+            if(!table.getFields().containsKey(labelField) || access.resolve(table, table.getField(labelField)) != FieldAnalysisAccess.FULL)
             {
                return (fallback);
             }
@@ -119,7 +126,7 @@ public final class AnalysisLabels
             QFieldMetaData labelMetadata = table.getField(labelField);
             if(labelMetadata.getPossibleValueSourceName() != null)
             {
-               record.withDisplayValue(labelField, translate(labelMetadata, record.getValue(labelField), visited));
+               record.withDisplayValue(labelField, translate(labelMetadata, record.getValue(labelField), visited, access));
             }
          }
          String label = QValueFormatter.formatRecordLabel(table, record);
@@ -145,6 +152,14 @@ public final class AnalysisLabels
     *******************************************************************************/
    public static java.util.Map<String, Object> policy(String tableName) throws QException
    {
+      return (policy(tableName, CoreTierFieldAccessResolver.defaultResolver()));
+   }
+
+   /*******************************************************************************
+    ** Include host-resolved tiers of related labels in the exact-run identity.
+    *******************************************************************************/
+   public static java.util.Map<String, Object> policy(String tableName, FieldAnalysisAccessResolver access) throws QException
+   {
       java.util.Map<String, Object> result = new java.util.TreeMap<>();
       java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>();
       pending.add(tableName);
@@ -160,6 +175,7 @@ public final class AnalysisLabels
          QTableMetaData table = TableMetaDataPersonalizerAction.execute(input, true);
          java.util.Map<String, Object> entry = new java.util.TreeMap<>();
          entry.put("fields", table.getFields());
+         entry.put("fullFields", table.getFields().values().stream().filter(f -> access.resolve(table, f) == FieldAnalysisAccess.FULL).map(QFieldMetaData::getName).sorted().toList());
          entry.put("locks", table.getRecordSecurityLocks());
          entry.put("labelFields", table.getRecordLabelFields());
          entry.put("labelFormat", table.getRecordLabelFormat());

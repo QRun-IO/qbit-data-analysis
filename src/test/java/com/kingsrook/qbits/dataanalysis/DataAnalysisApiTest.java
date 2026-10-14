@@ -169,7 +169,7 @@ class DataAnalysisApiTest extends EngineFixture
          assertThat(denied.getStatus()).isEqualTo(403);
          assertThat(run.path(operation.equals("COLUMN_PROFILE") ? "columnProfile" : "tableProfile").isObject()).isTrue();
       }
-      assertThat(invoker.listOperations().stream().filter(o -> o.pathTemplate().startsWith(DataAnalysisApi.PREFIX)).toList()).hasSize(7);
+      assertThat(invoker.listOperations().stream().filter(o -> o.pathTemplate().startsWith(DataAnalysisApi.PREFIX)).toList()).hasSize(8);
       var client = java.net.http.HttpClient.newHttpClient();
       var response = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://127.0.0.1:" + server.getBoundPort() + "/qqq/v1/openapi.json")).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
       assertThat(response.statusCode()).isEqualTo(200);
@@ -255,7 +255,7 @@ class DataAnalysisApiTest extends EngineFixture
       call(HttpMethod.POST, "/runs", Map.of("operation", "PIVOT"), 400);
       call(HttpMethod.POST, "/runs", com.fasterxml.jackson.databind.node.NullNode.getInstance(), 400);
       call(HttpMethod.POST, "/tables/{table}/column-profile", Map.of("fieldName", "amount", "filter",
-         Map.of("criteria", List.of(Map.of("fieldName", "secret", "operator", "EQUALS", "values", List.of("hidden"))))), 400);
+         Map.of("criteria", List.of(Map.of("fieldName", "secret", "operator", "EQUALS", "values", List.of("hidden"))))), 403);
       var absent = invoker.invoke(new UiApiRequest().withMethod(HttpMethod.GET).withPath(DataAnalysisApi.PREFIX + "/tables/{table}/capabilities")
          .withPathParam("table", "missing").withSessionUUID(caller).withUserTimezone("America/Chicago"));
       assertThat(absent.getStatus()).isEqualTo(404);
@@ -269,7 +269,7 @@ class DataAnalysisApiTest extends EngineFixture
    }
 
    /*******************************************************************************
-    ** Generated fragment is committed verbatim and has only the seven operations.
+    ** Generated fragment is committed verbatim and has only the eight operations.
     *******************************************************************************/
    @Test
    void contract() throws Exception
@@ -286,5 +286,38 @@ class DataAnalysisApiTest extends EngineFixture
       assertThat(Files.exists(path)).as("Regenerate with ./mvnw -o test -Dtest=DataAnalysisApiTest#contract -Dopenapi.write=true -Dqqq.snapshot.version=4.1.0-DATAANALYSIS-SNAPSHOT").isTrue();
       assertThat(Files.readString(path).replace("\r\n", "\n")).as("OpenAPI changed: regenerate with -Dopenapi.write=true").isEqualTo(yaml.replace("\r\n", "\n"));
    }
+   @Test
+   void pivotHttp() throws Exception
+   {
+      start();
+      var body = Map.of("rows", List.of(Map.of("field", "status")), "columns", List.of(Map.of("field", "customer")),
+         "values", List.of(Map.of("operator", "COUNT")));
+      JsonNode result = call(HttpMethod.POST, "/tables/{table}/pivot", body, 200);
+      assertThat(result.path("cells").size()).isEqualTo(4);
+      checkDrills(result);
+      checkDrills(call(HttpMethod.POST, "/tables/{table}/pivot", Map.of("rows", List.of(Map.of("field", "paid")),
+         "values", List.of(Map.of("operator", "COUNT")), "limitGroups", 1), 200));
+      for(String field : List.of("note", "amount", "quantity"))
+      {
+         checkDrills(call(HttpMethod.POST, "/tables/{table}/pivot", Map.of("rows", List.of(Map.of("field", field)),
+            "values", List.of(Map.of("operator", "COUNT")), "limitGroups", 1), 200));
+      }
+      for(String unit : List.of("DAY", "HOUR", "DAY_OF_WEEK", "HOUR_OF_DAY"))
+      {
+         checkDrills(call(HttpMethod.POST, "/tables/{table}/pivot", Map.of("rows", List.of(Map.of("field", "created", "dateBucket", unit)),
+            "values", List.of(Map.of("operator", "COUNT"))), 200));
+      }
+      checkDrills(call(HttpMethod.POST, "/tables/{table}/pivot", Map.of("rows", List.of(Map.of("field", "amount", "numericBins", Map.of("count", 10))),
+         "values", List.of(Map.of("operator", "COUNT"))), 200));
+      for(String field : List.of("secret", "missing"))
+      {
+         call(HttpMethod.POST, "/tables/{table}/pivot", Map.of("rows", List.of(Map.of("field", field)), "values", List.of(Map.of("operator", "COUNT"))), 400);
+         call(HttpMethod.POST, "/tables/{table}/pivot", Map.of("rows", List.of(Map.of("field", "status")), "values", List.of(Map.of("operator", "MIN", "field", field))), 400);
+      }
+      call(HttpMethod.POST, "/tables/{table}/pivot", Map.of(), 400);
+      call(HttpMethod.POST, "/tables/{table}/pivot", Map.of("rows", "status", "values", List.of(Map.of("operator", "COUNT"))), 400);
+      call(HttpMethod.POST, "/tables/{table}/pivot", Map.of("rows", List.of(Map.of("field", "status")), "values", List.of(Map.of("operator", "COUNT")), "limitGroups", 1.5), 400);
+      caller = "denied";
+      call(HttpMethod.POST, "/tables/{table}/pivot", body, 403);
+   }
 }
-

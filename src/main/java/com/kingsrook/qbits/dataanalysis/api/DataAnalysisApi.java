@@ -30,6 +30,7 @@ import com.kingsrook.qbits.dataanalysis.result.ChartKind;
 import com.kingsrook.qbits.dataanalysis.result.ColumnProfileRequest;
 import com.kingsrook.qbits.dataanalysis.result.DistinctValuesRequest;
 import com.kingsrook.qbits.dataanalysis.result.DuplicatesRequest;
+import com.kingsrook.qbits.dataanalysis.result.PivotRequest;
 import com.kingsrook.qbits.dataanalysis.result.TableProfileRequest;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
@@ -70,10 +71,10 @@ public class DataAnalysisApi
     *******************************************************************************/
    public static MiddlewareSpecExtension extension()
    {
-      return (new MiddlewareSpecExtension().withName("data-analysis").withSemanticVersion("1.0.0")
-         .withDescription("Profiles, distinct values, duplicate groups and exact analysis runs as the signed-in user.")
+      return (new MiddlewareSpecExtension().withName("data-analysis").withSemanticVersion("1.1.0")
+         .withDescription("Profiles, pivots, distinct values, duplicate groups and exact analysis runs as the signed-in user.")
          .withSpec(CapabilitiesSpec.class).withSpec(ColumnProfileSpec.class).withSpec(DistinctValuesSpec.class)
-         .withSpec(TableProfileSpec.class).withSpec(DuplicatesSpec.class).withSpec(StartRunSpec.class).withSpec(GetRunSpec.class));
+         .withSpec(PivotSpec.class).withSpec(TableProfileSpec.class).withSpec(DuplicatesSpec.class).withSpec(StartRunSpec.class).withSpec(GetRunSpec.class));
    }
 
    /*******************************************************************************
@@ -184,7 +185,7 @@ public class DataAnalysisApi
             throw new IllegalArgumentException("exact must be a boolean.");
          }
          QQueryFilter filter = body.get("filter") == null ? null : JsonUtils.toObject(JsonUtils.toJson(body.get("filter")), QQueryFilter.class);
-         validateFilter(filter, readable);
+         validateFilter(filter);
          List<String> fields = null;
          if(body.get("fields") != null)
          {
@@ -224,7 +225,7 @@ public class DataAnalysisApi
    /*******************************************************************************
     ** Bad filter fields fail before any aggregate or cached result is consulted.
     *******************************************************************************/
-   private static void validateFilter(QQueryFilter filter, List<String> readable)
+   private static void validateFilter(QQueryFilter filter)
    {
       if(filter == null)
       {
@@ -232,13 +233,12 @@ public class DataAnalysisApi
       }
       for(var criterion : filter.getCriteria())
       {
-         if(criterion.getOperator() == null || !readable.contains(criterion.getFieldName())
-            || criterion.getOtherFieldName() != null && !readable.contains(criterion.getOtherFieldName()))
+         if(criterion.getOperator() == null || criterion.getFieldName() == null)
          {
             throw new IllegalArgumentException("Choose readable filter fields and a valid operator.");
          }
       }
-      filter.getSubFilters().forEach(sub -> validateFilter(sub, readable));
+      filter.getSubFilters().forEach(sub -> validateFilter(sub));
    }
 
    /*******************************************************************************
@@ -503,5 +503,78 @@ public class DataAnalysisApi
          default -> ChartKind.BAR;
       };
       return (result);
+   }
+
+   /*******************************************************************************
+    ** Group records by row and column dimensions.
+    *******************************************************************************/
+   public static class PivotSpec extends ProfileSpec
+   {
+      /*******************************************************************************
+       ** Publish assistant-friendly grouping and measure capabilities.
+       *******************************************************************************/
+      public PivotSpec()
+      {
+         super("/tables/{table}/pivot", HttpMethod.POST, "Explore a pivot table",
+            "Group records by up to 3 row and 2 column fields (with date or numeric buckets) and compute counts, sums, averages, min/max, distinct counts or percentiles per cell; every cell has a drill-through filter.", "PivotRequest", "Pivot");
+      }
+
+      /*******************************************************************************
+       ** Strict body validation precedes the session-bound engine.
+       *******************************************************************************/
+      @Override
+      protected Object handle(JsonInput input) throws Exception
+      {
+         String tableName = input.getPathParam("table");
+         table(tableName);
+         DataAnalysisRuntime.service().capabilities(tableName);
+         PivotRequest pivot;
+         try
+         {
+            Map<String, Object> body = input.getBody();
+            integer(body, "limitGroups", 50, 1, 200);
+            if(body.containsKey("showTotals") && !(body.get("showTotals") instanceof Boolean))
+            {
+               throw new IllegalArgumentException("showTotals must be a boolean.");
+            }
+            for(String axis : List.of("rows", "columns"))
+            {
+               if(body.containsKey(axis))
+               {
+                  if(!(body.get(axis) instanceof List<?> dimensions))
+                  {
+                     throw new IllegalArgumentException("Dimensions must be arrays.");
+                  }
+                  for(Object dimension : dimensions)
+                  {
+                     if(!(dimension instanceof Map<?, ?> map) || !(map.get("field") instanceof String))
+                     {
+                        throw new IllegalArgumentException("Each dimension requires a field name.");
+                     }
+                     if(map.get("numericBins") instanceof Map<?, ?> bins)
+                     {
+                        Object count = bins.get("count");
+                        if(count != null && (!(count instanceof Number number) || number.doubleValue() != number.intValue()))
+                        {
+                           throw new IllegalArgumentException("Bin count must be an integer.");
+                        }
+                     }
+                  }
+               }
+            }
+            if(!(body.get("values") instanceof List<?> values) || values.stream().anyMatch(v -> !(v instanceof Map<?, ?> m)
+               || !(m.get("operator") instanceof String) || m.get("field") != null && !(m.get("field") instanceof String)))
+            {
+               throw new IllegalArgumentException("Measures require an operator and optional field name.");
+            }
+            pivot = JsonUtils.toObject(JsonUtils.toJson(body), PivotRequest.class).withTableName(tableName);
+            validateFilter(pivot.getFilter());
+         }
+         catch(Exception e)
+         {
+            throw new QBadRequestException("Invalid pivot request.");
+         }
+         return (transport(DataAnalysisRuntime.service().pivot(pivot), DataAnalysisSchemas.DataAnalysisPivotV1.class));
+      }
    }
 }

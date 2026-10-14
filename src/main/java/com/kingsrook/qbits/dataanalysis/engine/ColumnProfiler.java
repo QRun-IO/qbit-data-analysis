@@ -48,13 +48,23 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 public class ColumnProfiler
 {
    private final AnalysisBackend backend;
+   private final FieldAnalysisAccessResolver fieldAccess;
 
    /*******************************************************************************
     ** The backend can be replaced when core's new operators ship.
     *******************************************************************************/
    public ColumnProfiler(AnalysisBackend backend)
    {
+      this(backend, CoreTierFieldAccessResolver.defaultResolver());
+   }
+
+   /*******************************************************************************
+    ** Bind the host field policy for possible-value labels.
+    *******************************************************************************/
+   public ColumnProfiler(AnalysisBackend backend, FieldAnalysisAccessResolver fieldAccess)
+   {
       this.backend = backend;
+      this.fieldAccess = fieldAccess;
    }
 
 
@@ -82,7 +92,7 @@ public class ColumnProfiler
       }
       result.getCounts().add(ProfileSupport.count("distinct", counts.distinct(), table, drillFilter, counts.distinctFilter()));
       result.getCounts().add(ProfileSupport.metric("uniqueness", counts.uniqueness(), ValueType.PERCENT));
-      result.withTopValues(ProfileSupport.values(table, drillFilter, field, backend.topValues(table, filter, name, 20, 0, null), rows));
+      result.withTopValues(ProfileSupport.values(table, drillFilter, field, backend.topValues(table, filter, name, 20, 0, null), rows, fieldAccess));
       QFieldType type = field.getType();
       if(type == QFieldType.INTEGER || type == QFieldType.LONG || type == QFieldType.DECIMAL)
       {

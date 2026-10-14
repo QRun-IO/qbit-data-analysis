@@ -21,14 +21,21 @@
 package com.kingsrook.qbits.dataanalysis;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import com.kingsrook.qbits.dataanalysis.engine.AnalysisBackend;
+import com.kingsrook.qbits.dataanalysis.engine.AnalysisDrillGuard;
+import com.kingsrook.qbits.dataanalysis.engine.AnalysisLabels;
 import com.kingsrook.qbits.dataanalysis.engine.AnalysisSecurity;
 import com.kingsrook.qbits.dataanalysis.engine.ColumnProfiler;
 import com.kingsrook.qbits.dataanalysis.engine.CoreAnalysisBackend;
 import com.kingsrook.qbits.dataanalysis.engine.DistinctValues;
+import com.kingsrook.qbits.dataanalysis.engine.DrillFilters;
 import com.kingsrook.qbits.dataanalysis.engine.DuplicateFinder;
 import com.kingsrook.qbits.dataanalysis.engine.EffectiveConfigResolver;
+import com.kingsrook.qbits.dataanalysis.engine.FieldAnalysisAccessResolver;
+import com.kingsrook.qbits.dataanalysis.engine.PivotExplorer;
 import com.kingsrook.qbits.dataanalysis.engine.StandInAnalysisBackend;
 import com.kingsrook.qbits.dataanalysis.engine.TableProfiler;
 import com.kingsrook.qbits.dataanalysis.result.AnalysisRequest;
@@ -39,6 +46,8 @@ import com.kingsrook.qbits.dataanalysis.result.DistinctValuesPage;
 import com.kingsrook.qbits.dataanalysis.result.DistinctValuesRequest;
 import com.kingsrook.qbits.dataanalysis.result.DuplicatesRequest;
 import com.kingsrook.qbits.dataanalysis.result.DuplicatesResult;
+import com.kingsrook.qbits.dataanalysis.result.PivotRequest;
+import com.kingsrook.qbits.dataanalysis.result.PivotResult;
 import com.kingsrook.qbits.dataanalysis.result.RunStatus;
 import com.kingsrook.qbits.dataanalysis.result.TableProfile;
 import com.kingsrook.qbits.dataanalysis.result.TableProfileRequest;
@@ -53,6 +62,7 @@ public class DataAnalysisService
 {
    private final EffectiveConfigResolver configs;
    private final AnalysisSecurity security;
+   private final FieldAnalysisAccessResolver fieldAccess;
    private final AnalysisRunService runs;
 
    /*******************************************************************************
@@ -71,7 +81,8 @@ public class DataAnalysisService
    public DataAnalysisService(DataAnalysisQBitConfig config, Executor executor)
    {
       configs = new EffectiveConfigResolver(config);
-      security = new AnalysisSecurity(configs);
+      fieldAccess = config.getFieldAnalysisAccessResolver().get();
+      security = new AnalysisSecurity(configs, fieldAccess);
       runs = new AnalysisRunService(this, executor);
    }
 
@@ -116,7 +127,7 @@ public class DataAnalysisService
    public DistinctValuesPage distinctValues(DistinctValuesRequest request) throws QException
    {
       validate(request);
-      return (new DistinctValues(backend(request.getTableName())).page(request, security.field(request.getTableName(), request.getFieldName()), configs.resolve(request.getTableName())));
+      return (protect(new DistinctValues(backend(request.getTableName()), fieldAccess).page(request, security.field(request.getTableName(), request.getFieldName()), configs.resolve(request.getTableName())), request));
    }
 
 
@@ -127,7 +138,7 @@ public class DataAnalysisService
    public DuplicatesResult duplicates(DuplicatesRequest request) throws QException
    {
       validate(request);
-      return (new DuplicateFinder(backend(request.getTableName())).find(request, configs.resolve(request.getTableName())));
+      return (protect(new DuplicateFinder(backend(request.getTableName())).find(request, configs.resolve(request.getTableName())), request));
    }
 
 
@@ -219,7 +230,7 @@ public class DataAnalysisService
    public ColumnProfile compute(ColumnProfileRequest request, AnalysisBackend backend, AnalysisBackend.Scope scope) throws QException
    {
       validate(request);
-      return (new ColumnProfiler(backend).profile(request, security.field(request.getTableName(), request.getFieldName()), scope, configs.resolve(request.getTableName())));
+      return (protect(new ColumnProfiler(backend, fieldAccess).profile(request, security.field(request.getTableName(), request.getFieldName()), scope, configs.resolve(request.getTableName())), request));
    }
 
 
@@ -232,6 +243,41 @@ public class DataAnalysisService
       validate(request);
       List<QFieldMetaData> fields = security.analyzableFields(request.getTableName()).stream()
          .filter(f -> request.getFields() == null || request.getFields().contains(f.getName())).toList();
-      return (new TableProfiler(backend).profile(request, fields, scope));
+      return (protect(new TableProfiler(backend).profile(request, fields, scope), request));
+   }
+
+   /*******************************************************************************
+    ** Field policy identity is re-evaluated before cache reads and writes.
+    *******************************************************************************/
+   public String fieldAccessFingerprint(String table) throws QException
+   {
+      return (security.accessFingerprint(table));
+   }
+
+   /*******************************************************************************
+    ** Execute a pivot as the current user through core aggregates.
+    *******************************************************************************/
+   public PivotResult pivot(PivotRequest request) throws QException
+   {
+      validate(request);
+      return (new PivotExplorer(security, configs.resolve(request.getTableName())).execute(request));
+   }
+
+   /*******************************************************************************
+    ** Generated primary-key drills also obey the configured field-access seam.
+    *******************************************************************************/
+   private <T> T protect(T result, AnalysisRequest request) throws QException
+   {
+      new AnalysisDrillGuard(Set.copyOf(capabilities(request.getTableName()).getFields()),
+         DrillFilters.restoreTypes(request.getTableName(), request.getFilter())).apply(result);
+      return (result);
+   }
+
+   /*******************************************************************************
+    ** Include resolved tiers of related label fields in cache identity.
+    *******************************************************************************/
+   public Map<String, Object> fieldAccessPolicy(String table) throws QException
+   {
+      return (AnalysisLabels.policy(table, fieldAccess));
    }
 }
