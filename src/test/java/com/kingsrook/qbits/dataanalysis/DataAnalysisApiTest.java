@@ -169,7 +169,7 @@ class DataAnalysisApiTest extends EngineFixture
          assertThat(denied.getStatus()).isEqualTo(403);
          assertThat(run.path(operation.equals("COLUMN_PROFILE") ? "columnProfile" : "tableProfile").isObject()).isTrue();
       }
-      assertThat(invoker.listOperations().stream().filter(o -> o.pathTemplate().startsWith(DataAnalysisApi.PREFIX)).toList()).hasSize(8);
+      assertThat(invoker.listOperations().stream().filter(o -> o.pathTemplate().startsWith(DataAnalysisApi.PREFIX)).toList()).hasSize(13);
       var client = java.net.http.HttpClient.newHttpClient();
       var response = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://127.0.0.1:" + server.getBoundPort() + "/qqq/v1/openapi.json")).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
       assertThat(response.statusCode()).isEqualTo(200);
@@ -269,7 +269,7 @@ class DataAnalysisApiTest extends EngineFixture
    }
 
    /*******************************************************************************
-    ** Generated fragment is committed verbatim and has only the eight operations.
+    ** Generated fragment is committed verbatim and has all thirteen operations.
     *******************************************************************************/
    @Test
    void contract() throws Exception
@@ -319,5 +319,100 @@ class DataAnalysisApiTest extends EngineFixture
       call(HttpMethod.POST, "/tables/{table}/pivot", Map.of("rows", List.of(Map.of("field", "status")), "values", List.of(Map.of("operator", "COUNT")), "limitGroups", 1.5), 400);
       caller = "denied";
       call(HttpMethod.POST, "/tables/{table}/pivot", body, 403);
+   }
+
+   /*******************************************************************************
+    ** Exercise all five relationship endpoints and count drills.
+    *******************************************************************************/
+   @Test
+   void relationshipHttp() throws Exception
+   {
+      start();
+      JsonNode compare = call(HttpMethod.POST, "/tables/{table}/compare", Map.of("fields", List.of("amount", "status"), "labelA", "Selected", "labelB", "All"), 200);
+      assertThat(compare.path("fields").size()).isEqualTo(2);
+      assertThat(compare.path("fields").get(0).path("values").get(0).path("sideA").path("label").asText()).isEqualTo("Selected");
+      relationshipCountDrills(compare);
+      JsonNode shift = call(HttpMethod.POST, "/tables/{table}/shift", Map.of("field", "status", "dateField", "order_date", "bucket", "DAY"), 200);
+      assertThat(shift.path("psi").path("value").asDouble()).isZero();
+      relationshipCountDrills(shift);
+      JsonNode correlation = call(HttpMethod.POST, "/tables/{table}/correlation", Map.of("fields", List.of("amount", "quantity")), 200);
+      assertThat(correlation.path("cells").size()).isEqualTo(4);
+      assertThat(correlation.path("cells").get(1).path("n").asLong()).isEqualTo(11);
+      JsonNode scatter = call(HttpMethod.POST, "/tables/{table}/scatter", Map.of("xField", "id", "yField", "amount", "limit", 3), 200);
+      assertThat(scatter.path("sampleSize").asInt()).isEqualTo(3);
+      assertThat(scatter.path("trend").path("slope").asDouble()).isEqualTo(10);
+      for(JsonNode point : scatter.path("points"))
+      {
+         JsonNode drill = point.path("drill");
+         var response = invoker.invoke(new UiApiRequest().withMethod(HttpMethod.POST).withPath("/table/{tableName}/count")
+            .withPathParam("tableName", "orders").withJsonBody(Map.of("filter", drill.get("filter"))).withSessionUUID(caller));
+         assertThat(response.getStatus()).isEqualTo(200);
+         assertThat(response.getJson().path("count").asLong()).isEqualTo(1);
+      }
+      relationshipCountDrills(call(HttpMethod.POST, "/tables/{table}/crosstab", Map.of("rowField", "status", "columnField", "customer"), 200));
+      // All new schemas are discoverable from the same served OpenAPI catalog.
+      assertThat(com.kingsrook.qbits.dataanalysis.api.DataAnalysisApi.extension().getSemanticVersion()).isEqualTo("1.2.0");
+   }
+
+   /*******************************************************************************
+    ** Exercise all five relationship endpoints and count drills.
+    *******************************************************************************/
+   /*******************************************************************************
+    ** Verify strict request validation, privacy and authorization over HTTP.
+    *******************************************************************************/
+   @Test
+   void relationshipHttpErrorsAndPrivacy() throws Exception
+   {
+      config.withDefaultMinGroupSize(20);
+      instance.withSupplementalMetaData(new DataAnalysisRuntime(config));
+      start();
+      var requests = Map.of("compare", Map.of("fields", List.of("amount")), "shift", Map.of("field", "status", "dateField", "order_date"),
+         "correlation", Map.of("fields", List.of("amount", "quantity")), "scatter", Map.of("xField", "id", "yField", "amount"),
+         "crosstab", Map.of("rowField", "status", "columnField", "customer"));
+      assertThat(call(HttpMethod.POST, "/tables/{table}/scatter", requests.get("scatter"), 200).path("points").size()).isZero();
+      for(String field : List.of("secret", "missing"))
+      {
+         call(HttpMethod.POST, "/tables/{table}/compare", Map.of("fields", List.of(field)), 400);
+         call(HttpMethod.POST, "/tables/{table}/shift", Map.of("field", "status", "dateField", field), 400);
+         call(HttpMethod.POST, "/tables/{table}/correlation", Map.of("fields", List.of("id", field)), 400);
+         call(HttpMethod.POST, "/tables/{table}/scatter", Map.of("xField", "id", "yField", field), 400);
+         call(HttpMethod.POST, "/tables/{table}/crosstab", Map.of("rowField", "status", "columnField", field), 400);
+      }
+      call(HttpMethod.POST, "/tables/{table}/compare", Map.of("fields", "amount"), 400);
+      call(HttpMethod.POST, "/tables/{table}/compare", Map.of("fields", List.of("amount"), "filterA", "bad"), 400);
+      call(HttpMethod.POST, "/tables/{table}/compare", Map.of("fields", List.of("amount"), "labelA", 7), 400);
+      call(HttpMethod.POST, "/tables/{table}/scatter", Map.of("xField", "id", "yField", "amount", "limit", 2.5), 400);
+      call(HttpMethod.POST, "/tables/{table}/scatter", Map.of("xField", "id", "yField", "amount", "limit", 2001), 400);
+      call(HttpMethod.POST, "/tables/{table}/correlation", Map.of("fields", List.of("id")), 400);
+      call(HttpMethod.POST, "/tables/{table}/correlation", Map.of("fields", List.of("id", "id")), 400);
+      call(HttpMethod.POST, "/tables/{table}/shift", Map.of("field", "amount", "dateField", "order_date", "bucket", "BAD"), 400);
+      call(HttpMethod.POST, "/tables/{table}/crosstab", Map.of("rowField", "status", "columnField", "customer", "limit", 21), 400);
+      for(String operation : requests.keySet())
+      {
+         call(HttpMethod.POST, "/tables/{table}/" + operation, Map.of(), 400);
+      }
+      caller = "denied";
+      for(var request : requests.entrySet())
+      {
+         call(HttpMethod.POST, "/tables/{table}/" + request.getKey(), request.getValue(), 403);
+      }
+   }
+
+   /*******************************************************************************
+    ** Post each released count drill to the actual core count endpoint.
+    *******************************************************************************/
+   private void relationshipCountDrills(JsonNode node) throws Exception
+   {
+      if(node.path("valueType").asText().equals("COUNT"))
+      {
+         checkDrills(node);
+      }
+      else if(node.isContainerNode())
+      {
+         for(JsonNode child : node)
+         {
+            relationshipCountDrills(child);
+         }
+      }
    }
 }

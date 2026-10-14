@@ -4,9 +4,9 @@ Statistical analysis and data dives on any QQQ table, filter or saved view: prof
 
 ## What works now
 
-The host API provides column and table profiles, distinct-value pages, duplicate groups, drill-through filters, effective per-table configuration, privacy suppression, and asynchronous exact runs with a persistent per-user cache. Metadata, six visible tables, owner locks, PostgreSQL DDL generation and the Analyses home are also available.
+The host API provides column and table profiles, pivots, comparisons, distribution shifts, correlations, scatter samples, crosstabs, distinct-value pages, duplicate groups, drill-through filters, privacy suppression, and asynchronous exact profile runs with a persistent per-user cache. Metadata, six visible tables, owner locks, PostgreSQL DDL generation and the Analyses home are also available.
 
-Seven HTTP operations are available under `/qqq/v1/qbit/data-analysis`; the Analyze UI is a later phase. Pivots, comparisons, anomalies, saved-analysis execution, scheduling and exports remain later phases.
+Thirteen HTTP operations are available under `/qqq/v1/qbit/data-analysis`; the Analyze UI is a later phase. Pivot and relationship backends are available. Anomalies, saved-analysis execution, scheduling and exports remain later phases.
 
 ## Requirements
 
@@ -138,7 +138,7 @@ Count drills combine an untouched copy of the request filter with their producin
 
 ## HTTP endpoints
 
-Extension `data-analysis` version **1.1.0**, prefix `/qbit/data-analysis` inside `/qqq/v1`:
+Extension `data-analysis` version **1.2.0**, prefix `/qbit/data-analysis` inside `/qqq/v1`:
 
 | Method | Path after `/qqq/v1` | Body or purpose |
 | --- | --- | --- |
@@ -148,6 +148,11 @@ Extension `data-analysis` version **1.1.0**, prefix `/qbit/data-analysis` inside
 | POST | `/qbit/data-analysis/tables/{table}/table-profile` | `{filter, fields}` |
 | POST | `/qbit/data-analysis/tables/{table}/duplicates` | `{fields, filter, limit}`; default limit 50, maximum 500 |
 | POST | `/qbit/data-analysis/tables/{table}/pivot` | `{rows, columns, values, filter, showTotals, limitGroups}`; 1–3 row dimensions, 0–2 column dimensions, 1–6 measures |
+| POST | `/qbit/data-analysis/tables/{table}/compare` | `{filterA, filterB, labelA, labelB, fields}`; null filter selects the whole permitted table |
+| POST | `/qbit/data-analysis/tables/{table}/shift` | `{field, dateField, bucket, filter}`; calendar buckets, top 8 categories or quartiles, first/last complete-bucket PSI |
+| POST | `/qbit/data-analysis/tables/{table}/correlation` | `{fields, filter}`; 2–12 distinct numeric fields, pairwise r and n, scatter request per cell |
+| POST | `/qbit/data-analysis/tables/{table}/scatter` | `{xField, yField, filter, limit}`; default/maximum 2000 points and a sample trend line |
+| POST | `/qbit/data-analysis/tables/{table}/crosstab` | `{rowField, columnField, filter, limit}`; default/maximum 20 categories per axis plus Other |
 | POST | `/qbit/data-analysis/runs` | `{operation: COLUMN_PROFILE or TABLE_PROFILE, tableName, request}` returns `{runId, status}` |
 | GET | `/qbit/data-analysis/runs/{runId}` | Status, timestamps, error, typed `columnProfile` or `tableProfile` |
 
@@ -187,6 +192,16 @@ Variance, interpolated percentiles, string lengths/shapes, date classification, 
 
 Data versions use filtered COUNT plus MAX of a readable modification-date-like field, otherwise MAX(primary key). This is the specified inexpensive invalidation heuristic, not snapshot isolation; updates on a table without a modification timestamp can remain cached until TTL expiry. Concurrent writes can also change drill counts after a profile is produced. Results always retain `asOf`.
 
+## Compare and relationships
+
+All five operations resolve FULL fields before reading source data and use core actions with `PermissionEnforcement.ENFORCE`. Core applies table permissions and record locks. Compare batches numeric COUNT, AVG, VAR_SAMP and quartiles per population; categorical comparisons use a common top-10-plus-Other distribution and pool categories with expected counts below five. Deltas are B minus A, and percent deltas divide by absolute A (null when A is zero). Significance uses a strict p < 0.05 threshold; invalid or privacy-suppressed tests return a plain reason.
+
+Correlation batches all CORR pairs into one aggregate call. Pairwise non-null n values use enforced core count actions, since the current aggregate API has no per-measure filter. Unsupported aggregates use core's bounded streamed fallback; a truncated fallback returns 400 with a request to narrow the filter, rather than publishing a partial significance test. Scatter uses the first N paired records ordered by primary key because the current core QueryInput has no sampling API. Its least-squares line describes that displayed sample. Point drills contain only primary-key equality and are disabled whenever privacy is enabled or the primary key is not FULL.
+
+Shift uses session-timezone calendar buckets. Only buckets whose end has passed enter PSI; categories share one top-8-plus-Other basis, and numeric PSI uses the first complete bucket's quartile boundaries for both populations. Zero shares are floored at 0.000001. PSI is descriptive, not a significance test. Category time series explicitly declare `stacked: true`.
+
+The minimum-group-size guard removes small numeric summaries, suppresses crosstab cells and revealing marginal shares, disables drills on privacy-merged Other groups, and suppresses scatter points below the minimum. Statistical tests and PSI are unavailable when protected values would contribute. No runtime statistics dependency is added; beta/gamma, Welch, chi-square, proportions, PSI and Pearson are pure Java, checked against independently computed SciPy references.
+
 ## Adopting in another app
 
 1. Add a backend, install the producer and run the usual `QInstanceValidator`.
@@ -195,7 +210,7 @@ Data versions use filtered COUNT plus MAX of a readable modification-date-like f
 4. Review per-table include/exclude sets, limits and minimum group sizes before enabling analysis. Integrate Saved Analyses and Watches with host ESB/Quick Search when those optional host features are installed; this scaffold does not add those dependencies.
 5. Use the Analyses home as the owner of analysis data. Other dashboards should link there until saved-analysis widgets are implemented.
 
-Phase **b** profiles, drill-through, runs/cache and HTTP endpoints, and phase **c** pivot backend are implemented. Remaining work: **b** analysis UI; **c** pivot UI; **d** comparisons and relationships; **e** watch evaluation and alerts; **f** saved-analysis execution, sharing, stars integration, schedules, chart widgets, full home and exports. The current home summarizes stored rows; the host facade executes profiles. The home does not send deliveries.
+Phase **b** profiles, drill-through, runs/cache and HTTP endpoints, phase **c** pivot backend, and phase **d** compare/relationships backend are implemented. Remaining work: **b** analysis UI; **c** pivot UI; **d** comparison/relationship UI; **e** watch evaluation and alerts; **f** saved-analysis execution, sharing, stars integration, schedules, chart widgets, full home and exports. The current home summarizes stored rows; the host facade executes profiles. The home does not send deliveries.
 
 ## Build
 

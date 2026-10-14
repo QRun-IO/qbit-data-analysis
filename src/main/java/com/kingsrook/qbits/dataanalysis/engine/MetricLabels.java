@@ -30,6 +30,8 @@ import com.kingsrook.qbits.dataanalysis.result.ValueType;
 public final class MetricLabels
 {
    private static final Map<String, String> LABELS = Map.ofEntries(
+      Map.entry("count", "Count"), Map.entry("delta", "Difference"), Map.entry("percentDelta", "Percent change"),
+      Map.entry("psi", "Population stability index"), Map.entry("rowShare", "Row share"), Map.entry("columnShare", "Column share"),
       Map.entry("rows", "Rows"), Map.entry("nonNull", "Non-empty"), Map.entry("nulls", "Nulls"),
       Map.entry("blanks", "Blanks"), Map.entry("distinct", "Distinct values"), Map.entry("uniqueness", "Uniqueness"),
       Map.entry("completeness", "Completeness"), Map.entry("share", "Share"),

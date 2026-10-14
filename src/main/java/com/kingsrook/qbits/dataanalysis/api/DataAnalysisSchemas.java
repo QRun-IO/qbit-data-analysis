@@ -114,6 +114,7 @@ public class DataAnalysisSchemas
       result.put("DataAnalysisPivotMeasureInfoV1", new DataAnalysisPivotMeasureInfoV1().toSchema());
       result.put("DataAnalysisPivotCellV1", new DataAnalysisPivotCellV1().toSchema());
       result.put("DataAnalysisPivotV1", new DataAnalysisPivotV1().toSchema());
+      result.putAll(RelationshipSchemas.components());
       return (result);
    }
 
@@ -181,6 +182,9 @@ public class DataAnalysisSchemas
       @OpenAPIDescription("Semantic field kind: NUMERIC, DATE, DATE_TIME, TEXT, BOOLEAN or CATEGORY.")
       public ChartKind kind;
 
+      @OpenAPIDescription("Stack category series to a total share of one when true.")
+      public Boolean stacked;
+
       @OpenAPIDescription("Alternatives.")
       public List<ChartKind> alternatives;
 
@@ -203,6 +207,7 @@ public class DataAnalysisSchemas
       public Schema toSchema()
       {
          Map<String, Schema> properties = new LinkedHashMap<>();
+         properties.put("stacked", new Schema().withType(Type.BOOLEAN).withNullable(true).withDescription("Stack category series to a total share of one when true."));
          properties.put("kind", new Schema().withType(Type.STRING).withEnumValues(java.util.Arrays.stream(ChartKind.values()).map(Enum::name).toList()).withDescription("Semantic field kind: NUMERIC, DATE, DATE_TIME, TEXT, BOOLEAN or CATEGORY.").withNullable(true));
          properties.put("alternatives", new Schema().withType(Type.ARRAY).withItems(new Schema().withType(Type.STRING).withEnumValues(java.util.Arrays.stream(ChartKind.values()).map(Enum::name).toList())).withDescription("Alternatives.").withNullable(true));
          properties.put("x", ref("DataAnalysisAxisV1").withDescription("X.").withNullable(true));

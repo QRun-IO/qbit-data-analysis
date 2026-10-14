@@ -33,6 +33,7 @@ import com.fasterxml.jackson.annotation.JsonAutoDetect;
 public class Chart implements Serializable
 {
    private ChartKind kind;
+   private Boolean stacked;
    private List<ChartKind> alternatives = List.of();
    private Axis x;
    private Axis y;
@@ -162,6 +163,23 @@ public class Chart implements Serializable
    public Chart withAnnotations(List<String> annotations)
    {
       this.annotations = annotations;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Whether category series should stack to a total share of one.
+    *******************************************************************************/
+   public Boolean getStacked()
+   {
+      return (stacked);
+   }
+
+   /*******************************************************************************
+    ** Declare stacked shares explicitly rather than relying on chart prose.
+    *******************************************************************************/
+   public Chart withStacked(Boolean stacked)
+   {
+      this.stacked = stacked;
       return (this);
    }
 }
