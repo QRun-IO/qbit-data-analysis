@@ -31,6 +31,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.DisplayFormat;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
@@ -96,7 +97,7 @@ abstract class EngineFixture
          .withPermissionRules(DataAnalysisTables.permissionRules("orders"))
          .withField(new QFieldMetaData("id", QFieldType.INTEGER)).withField(new QFieldMetaData("customer", QFieldType.INTEGER).withPossibleValueSourceName("customer"))
          .withField(new QFieldMetaData("status", QFieldType.STRING).withPossibleValueSourceName("statusValues"))
-         .withField(new QFieldMetaData("amount", QFieldType.DECIMAL)).withField(new QFieldMetaData("quantity", QFieldType.INTEGER))
+         .withField(new QFieldMetaData("amount", QFieldType.DECIMAL).withDisplayFormat(DisplayFormat.CURRENCY)).withField(new QFieldMetaData("quantity", QFieldType.INTEGER))
          .withField(new QFieldMetaData("order_date", QFieldType.DATE)).withField(new QFieldMetaData("created", QFieldType.DATE_TIME))
          .withField(new QFieldMetaData("note", QFieldType.STRING)).withField(new QFieldMetaData("paid", QFieldType.BOOLEAN))
          .withField(new QFieldMetaData("modifyDate", QFieldType.DATE_TIME).withBackendName("modify_date"))
@@ -118,7 +119,15 @@ abstract class EngineFixture
             .withValue("note", notes[i]).withValue("paid", i == 11 ? null : i % 2 == 0).withValue("modifyDate", Instant.parse("2026-10-13T12:00:00Z")));
       }
       config = new DataAnalysisQBitConfig().withBackendName("memory");
-      service = new DataAnalysisService(config, Runnable::run);
+      service = newService(config, Runnable::run);
+   }
+
+   /*******************************************************************************
+    ** Allow the identical contract to exercise both primitive implementations.
+    *******************************************************************************/
+   protected DataAnalysisService newService(DataAnalysisQBitConfig configuration, java.util.concurrent.Executor executor)
+   {
+      return (new DataAnalysisService(configuration, executor));
    }
 
    /*******************************************************************************

@@ -61,6 +61,29 @@ class PostgresEngineTest extends EngineContractTest
    }
 
    /*******************************************************************************
+    ** Large populations never become one bind per sampled primary key.
+    *******************************************************************************/
+   @org.junit.jupiter.api.Test
+   void largeEstimate() throws Exception
+   {
+      try(var statement = connection.createStatement())
+      {
+         statement.execute("TRUNCATE TABLE orders");
+         statement.execute("INSERT INTO orders (id, customer, paid) SELECT id, 1, id % 2 = 0 FROM generate_series(1, 50000) AS id");
+      }
+      config.withDefaultSampleThresholdRows(100).withDefaultSampleRows(1000);
+      service.getConfigResolver().invalidate();
+      var profile = service.columnProfile(new com.kingsrook.qbits.dataanalysis.result.ColumnProfileRequest().withTableName("orders").withFieldName("paid"));
+      org.assertj.core.api.Assertions.assertThat(profile.getEstimate()).isTrue();
+      assertMetric(profile.getCounts(), "rows", "50000");
+      org.assertj.core.api.Assertions.assertThat(com.kingsrook.qqq.backend.core.utils.JsonUtils.toJson(profile)).doesNotContain("\"operator\":\"IN\"");
+      // Also exceed the old parameter ceiling with the requested sample itself.
+      config.withDefaultSampleRows(40000);
+      service.getConfigResolver().invalidate();
+      assertMetric(service.columnProfile(new com.kingsrook.qbits.dataanalysis.result.ColumnProfileRequest().withTableName("orders").withFieldName("paid")).getCounts(), "rows", "50000");
+   }
+
+   /*******************************************************************************
     ** Credentials belong only to the ephemeral test container.
     *******************************************************************************/
    @Override

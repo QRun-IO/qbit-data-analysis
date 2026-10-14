@@ -51,6 +51,6 @@ public class DuplicateFinder
       return (new DuplicatesResult().withTableName(request.getTableName()).withFields(request.getFields()).withFilter(DrillFilters.copy(request.getFilter()))
          .withRowsScanned(scope.rowsScanned()).withTruncated(scope.truncated()).withAsOf(Instant.now())
          .withGroups(new MinGroupSizeGuard(config.getMinGroupSize()).groups(ProfileSupport.values(request.getTableName(), scope.filter(), null,
-            backend.duplicates(request.getTableName(), scope.filter(), request.getFields(), 50), scope.rowsScanned()))));
+            backend.duplicates(request.getTableName(), scope.filter(), request.getFields(), request.getLimit()), scope.rowsScanned()))));
    }
 }

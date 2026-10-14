@@ -68,7 +68,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 public class StandInAnalysisBackend implements AnalysisBackend
 {
    private static final MathContext MATH = MathContext.DECIMAL128;
-   private final EffectiveConfig config;
+   protected final EffectiveConfig config;
+   protected boolean estimating;
 
    /*******************************************************************************
     ** Bind one request's detached configuration.
@@ -94,13 +95,14 @@ public class StandInAnalysisBackend implements AnalysisBackend
 
 
    /*******************************************************************************
-    ** A boundary query selects the prefix retained in every drill.
+    ** A single boundary parameter bounds the prefix used for computation.
     *******************************************************************************/
    @Override
    public Scope scope(String table, QQueryFilter filter, boolean exact) throws QException
    {
       long total = count(table, filter);
-      boolean estimate = !exact && total > config.getSampleThresholdRows();
+      boolean estimate = !exact && total > config.getSampleThresholdRows() && total > Math.min(config.getSampleRows(), config.getMaxRows());
+      estimating = estimate;
       int limit = estimate ? Math.min(config.getSampleRows(), config.getMaxRows()) : config.getMaxRows();
       QQueryFilter scoped = DrillFilters.copy(filter);
       if(total > limit)
@@ -108,7 +110,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
          String pk = primaryKey(table);
          if(limit == 0)
          {
-            scoped = DrillFilters.and(scoped, DrillFilters.in(pk, List.of()));
+            scoped = DrillFilters.and(scoped, DrillFilters.condition(pk, QCriteriaOperator.IS_BLANK));
          }
          else
          {
@@ -141,7 +143,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
    /*******************************************************************************
     ** Bound both page size and retained records.
     *******************************************************************************/
-   private List<QRecord> rows(String table, QQueryFilter filter, Set<String> fields, int limit) throws QException
+   protected List<QRecord> rows(String table, QQueryFilter filter, Set<String> fields, int limit) throws QException
    {
       List<QRecord> records = new ArrayList<>();
       int bound = Math.min(limit, config.getMaxRows());
@@ -163,7 +165,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
    /*******************************************************************************
     ** Core applies table permissions, field locks and record locks.
     *******************************************************************************/
-   private List<AggregateResult> aggregate(AggregateInput input) throws QException
+   protected List<AggregateResult> aggregate(AggregateInput input) throws QException
    {
       QQueryFilter restored = DrillFilters.restoreTypes(input.getTableName(), input.getFilter());
       restored.setOrderBys(input.getFilter().getOrderBys());
@@ -191,6 +193,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
          {
             input.withAggregate(countOf(field, AggregateOperator.COUNT)).withAggregate(countOf(field, AggregateOperator.COUNT_DISTINCT));
          }
+         fieldCountAggregates(input, batch);
          List<AggregateResult> aggregates = aggregate(input);
          Set<String> selection = new LinkedHashSet<>(batch);
          selection.add(primaryKey(table));
@@ -198,7 +201,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
          for(String field : batch)
          {
             boolean string = field(table, field).getType().isStringLike();
-            long nulls = count(table, DrillFilters.and(filter, DrillFilters.nulls(field, string)));
+            long nulls = fieldCount(table, filter, field, AggregateOperator.COUNT_NULL, aggregates, DrillFilters.nulls(field, string));
             Map<Serializable, Serializable> representatives = new LinkedHashMap<>();
             Set<Serializable> blanks = new LinkedHashSet<>();
             for(QRecord record : records)
@@ -220,18 +223,35 @@ public class StandInAnalysisBackend implements AnalysisBackend
                   .withSubFilter(DrillFilters.in(field, new ArrayList<>(blanks)));
             }
             long distinct = aggregates.isEmpty() ? 0 : number(aggregates.getFirst(), field, AggregateOperator.COUNT_DISTINCT).longValue();
-            if(isMemory(table) && field(table, field).getType() == QFieldType.DECIMAL)
+            if(!estimating && isMemory(table) && field(table, field).getType() == QFieldType.DECIMAL)
             {
                distinct = representatives.size();
             }
-            result.put(field, new FieldCounts(total - nulls, nulls, string ? count(table, DrillFilters.and(filter, blankFilter)) : nulls,
-               distinct, blankFilter, DrillFilters.in(primaryKey(table), new ArrayList<>(representatives.values()))));
+            result.put(field, new FieldCounts(total - nulls, nulls, string ? fieldCount(table, filter, field, AggregateOperator.COUNT_BLANK, aggregates, blankFilter) : nulls,
+               distinct, blankFilter, estimating ? DrillFilters.nonNull(field, string) : DrillFilters.in(primaryKey(table), new ArrayList<>(representatives.values()))));
          }
       }
       return (result);
    }
 
 
+
+   /*******************************************************************************
+    ** Subclasses may extend the existing batch with native null/blank counts.
+    *******************************************************************************/
+   protected void fieldCountAggregates(AggregateInput input, List<String> fields) throws QException
+   {
+      // The portable backend counts null and blank predicates separately.
+   }
+
+   /*******************************************************************************
+    ** Count the exact drill predicate when native counters are unavailable.
+    *******************************************************************************/
+   protected long fieldCount(String table, QQueryFilter filter, String field, AggregateOperator operator,
+      List<AggregateResult> results, QQueryFilter condition) throws QException
+   {
+      return (count(table, DrillFilters.and(filter, condition)));
+   }
 
    /*******************************************************************************
     ** Push down group, count, ordering and pagination.
@@ -255,6 +275,30 @@ public class StandInAnalysisBackend implements AnalysisBackend
 
 
    /*******************************************************************************
+    ** Random backends scale a count using the current aggregate's sample size.
+    *******************************************************************************/
+   protected long aggregateCount(long value)
+   {
+      return (value);
+   }
+
+   /*******************************************************************************
+    ** Random backends retain the raw sample ratio before rounding counts.
+    *******************************************************************************/
+   protected BigDecimal aggregateShare(long value)
+   {
+      return (null);
+   }
+
+   /*******************************************************************************
+    ** Exact and prefix groups derive shares from the profiler's row count.
+    *******************************************************************************/
+   protected BigDecimal countShare()
+   {
+      return (null);
+   }
+
+   /*******************************************************************************
     ** Tuple drills use IN for non-null values and null-only predicates otherwise.
     *******************************************************************************/
    private List<GroupCount> groups(String table, QQueryFilter filter, List<String> fields, int limit, int offset, boolean duplicates) throws QException
@@ -270,7 +314,8 @@ public class StandInAnalysisBackend implements AnalysisBackend
       Map<Serializable, GroupCount> merged = new LinkedHashMap<>();
       for(AggregateResult row : aggregate(input))
       {
-         long size = number(row, primaryKey(table), AggregateOperator.COUNT).longValue();
+         long rawSize = number(row, primaryKey(table), AggregateOperator.COUNT).longValue();
+         long size = aggregateCount(rawSize);
          LinkedHashMap<String, Serializable> tuple = new LinkedHashMap<>();
          QQueryFilter condition = new QQueryFilter();
          for(String field : fields)
@@ -278,7 +323,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
             Serializable value = row.getGroupByValues().entrySet().stream().filter(e -> field.equals(e.getKey().getFieldName())).findFirst().orElseThrow().getValue();
             tuple.put(field, value instanceof BigDecimal d ? new BigDecimal(d.stripTrailingZeros().toPlainString()) : value);
             condition.withSubFilter(value == null ? DrillFilters.nulls(field, field(table, field).getType().isStringLike())
-               : value instanceof BigDecimal ? DrillFilters.in(field, List.of(value.toString()))
+               : value instanceof BigDecimal && !estimating ? DrillFilters.in(field, List.of(value.toString()))
                : duplicates ? DrillFilters.in(field, List.of(value)) : DrillFilters.value(field, value, field(table, field).getType().isStringLike()));
          }
          Serializable value = duplicates ? tuple : tuple.get(fields.getFirst());
@@ -288,7 +333,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
             size += previous.count();
             condition = new QQueryFilter().withBooleanOperator(QQueryFilter.BooleanOperator.OR).withSubFilter(previous.condition()).withSubFilter(condition);
          }
-         merged.put(value, new GroupCount(value, value == null ? "(null)" : value.toString(), size, condition));
+         merged.put(value, new GroupCount(value, value == null ? "(null)" : value.toString(), size, condition, aggregateShare(rawSize)));
       }
       List<GroupCount> groups = new ArrayList<>(merged.values());
       if(isMemory(table))
@@ -308,14 +353,8 @@ public class StandInAnalysisBackend implements AnalysisBackend
    {
       List<BigDecimal> values = rows(table, filter, Set.of(field), config.getMaxRows()).stream().map(r -> r.getValue(field))
          .filter(Objects::nonNull).map(v -> new BigDecimal(v.toString())).sorted().toList();
-      Map<String, BigDecimal> metrics = new LinkedHashMap<>();
-      AggregateInput input = new AggregateInput(table).withFilter(DrillFilters.copy(filter));
-      for(AggregateOperator op : List.of(AggregateOperator.MIN, AggregateOperator.MAX, AggregateOperator.AVG, AggregateOperator.SUM))
-      {
-         input.withAggregate(new Aggregate(field, op));
-      }
-      List<AggregateResult> results = aggregate(input);
-      if(values.isEmpty())
+      Map<String, BigDecimal> metrics = numericMetrics(table, filter, field, percentiles, values);
+      if(metrics.isEmpty() || metrics.get("min") == null)
       {
          for(String key : List.of("min", "max", "mean", "stddev", "sum"))
          {
@@ -325,23 +364,12 @@ public class StandInAnalysisBackend implements AnalysisBackend
          {
             metrics.put("p" + p.multiply(BigDecimal.valueOf(100)).stripTrailingZeros().toPlainString(), null);
          }
-         QQueryFilter empty = DrillFilters.in(primaryKey(table), List.of());
-         return (new NumericSummary(metrics, List.of(), 0, empty, List.of(new GroupCount("zeros", "zeros", 0, empty), new GroupCount("negatives", "negatives", 0, empty))));
+         QQueryFilter empty = DrillFilters.condition(primaryKey(table), QCriteriaOperator.IS_BLANK);
+         return (new NumericSummary(metrics, List.of(), 0, empty, List.of(new GroupCount("zeros", "zeros", 0, estimating ? DrillFilters.condition(field, QCriteriaOperator.EQUALS, BigDecimal.ZERO) : empty),
+            new GroupCount("negatives", "negatives", 0, estimating ? DrillFilters.range(field, null, BigDecimal.ZERO, false) : empty))));
       }
-      AggregateResult result = results.getFirst();
-      metrics.put("min", number(result, field, AggregateOperator.MIN));
-      metrics.put("max", number(result, field, AggregateOperator.MAX));
-      metrics.put("mean", number(result, field, AggregateOperator.AVG));
-      metrics.put("sum", number(result, field, AggregateOperator.SUM));
-      BigDecimal mean = values.stream().reduce(BigDecimal.ZERO, BigDecimal::add).divide(BigDecimal.valueOf(values.size()), MATH);
-      BigDecimal variance = values.stream().map(v -> v.subtract(mean).pow(2)).reduce(BigDecimal.ZERO, BigDecimal::add);
-      metrics.put("stddev", values.size() < 2 ? null : variance.divide(BigDecimal.valueOf(values.size() - 1), MATH).sqrt(MATH));
-      for(BigDecimal p : percentiles)
-      {
-         metrics.put("p" + p.multiply(BigDecimal.valueOf(100)).stripTrailingZeros().toPlainString(), percentile(values, p));
-      }
-      BigDecimal q1 = percentile(values, new BigDecimal("0.25"));
-      BigDecimal q3 = percentile(values, new BigDecimal("0.75"));
+      BigDecimal q1 = metrics.containsKey("p25") ? metrics.get("p25") : percentile(values, new BigDecimal("0.25"));
+      BigDecimal q3 = metrics.containsKey("p75") ? metrics.get("p75") : percentile(values, new BigDecimal("0.75"));
       BigDecimal span = q3.subtract(q1).multiply(new BigDecimal("1.5"));
       BigDecimal low = q1.subtract(span);
       BigDecimal high = q3.add(span);
@@ -355,13 +383,46 @@ public class StandInAnalysisBackend implements AnalysisBackend
       List<GroupCount> extremeGroups = new ArrayList<>();
       for(BigDecimal value : extremes)
       {
-         QQueryFilter condition = DrillFilters.in(field, equalNumbers(values, value));
-         extremeGroups.add(new GroupCount(value, value.toPlainString(), count(table, DrillFilters.and(filter, condition)), condition));
+         QQueryFilter condition = estimating ? DrillFilters.condition(field, QCriteriaOperator.EQUALS, value) : DrillFilters.in(field, equalNumbers(values, value));
+         extremeGroups.add(new GroupCount(value, value.toPlainString(), count(table, DrillFilters.and(filter, condition)), condition, countShare()));
       }
-      QQueryFilter zeros = DrillFilters.in(field, equalNumbers(values, BigDecimal.ZERO));
+      QQueryFilter zeros = estimating ? DrillFilters.condition(field, QCriteriaOperator.EQUALS, BigDecimal.ZERO) : DrillFilters.in(field, equalNumbers(values, BigDecimal.ZERO));
       QQueryFilter negatives = numericRange(table, field, values, null, BigDecimal.ZERO, false);
       return (new NumericSummary(metrics, extremeGroups, count(table, DrillFilters.and(filter, outliers)), outliers,
          List.of(bucket(table, filter, "zeros", zeros), bucket(table, filter, "negatives", negatives))));
+   }
+
+
+
+   /*******************************************************************************
+    ** Portable numeric moments; core-backed subclasses replace supported work.
+    *******************************************************************************/
+   protected Map<String, BigDecimal> numericMetrics(String table, QQueryFilter filter, String field, List<BigDecimal> percentiles, List<BigDecimal> values) throws QException
+   {
+      Map<String, BigDecimal> metrics = new LinkedHashMap<>();
+      if(values.isEmpty())
+      {
+         return (metrics);
+      }
+      AggregateInput input = new AggregateInput(table).withFilter(DrillFilters.copy(filter));
+      for(AggregateOperator op : List.of(AggregateOperator.MIN, AggregateOperator.MAX, AggregateOperator.AVG, AggregateOperator.SUM))
+      {
+         input.withAggregate(new Aggregate(field, op));
+      }
+      List<AggregateResult> results = aggregate(input);
+      AggregateResult result = results.getFirst();
+      metrics.put("min", number(result, field, AggregateOperator.MIN));
+      metrics.put("max", number(result, field, AggregateOperator.MAX));
+      metrics.put("mean", number(result, field, AggregateOperator.AVG));
+      metrics.put("sum", number(result, field, AggregateOperator.SUM));
+      BigDecimal mean = values.stream().reduce(BigDecimal.ZERO, BigDecimal::add).divide(BigDecimal.valueOf(values.size()), MATH);
+      BigDecimal variance = values.stream().map(v -> v.subtract(mean).pow(2)).reduce(BigDecimal.ZERO, BigDecimal::add);
+      metrics.put("stddev", values.size() < 2 ? null : variance.divide(BigDecimal.valueOf(values.size() - 1), MATH).sqrt(MATH));
+      for(BigDecimal p : percentiles)
+      {
+         metrics.put("p" + p.multiply(BigDecimal.valueOf(100)).stripTrailingZeros().toPlainString(), percentile(values, p));
+      }
+      return (metrics);
    }
 
 
@@ -394,17 +455,21 @@ public class StandInAnalysisBackend implements AnalysisBackend
       {
          return (result);
       }
+      NiceBins nice = NiceBins.covering(low, high);
+      low = nice.low();
+      high = nice.high();
+      bins = nice.count();
       List<BigDecimal> values = rows(table, filter, Set.of(field), config.getMaxRows()).stream().map(r -> r.getValue(field))
          .filter(Objects::nonNull).map(v -> new BigDecimal(v.toString())).toList();
-      result.add(bucket(table, filter, "Below " + low, numericRange(table, field, values, null, low, false)));
+      result.add(bucket(table, filter, AnalysisFormatting.interval(field(table, field), null, low), numericRange(table, field, values, null, low, false)));
       BigDecimal width = high.subtract(low).divide(BigDecimal.valueOf(bins), MATH);
       for(int i = 0; i < bins; i++)
       {
          BigDecimal start = low.add(width.multiply(BigDecimal.valueOf(i)));
          BigDecimal end = i == bins - 1 ? high : low.add(width.multiply(BigDecimal.valueOf(i + 1)));
-         result.add(bucket(table, filter, "[" + start + ", " + end + (i == bins - 1 ? "]" : ")"), numericRange(table, field, values, start, end, i == bins - 1)));
+         result.add(bucket(table, filter, AnalysisFormatting.interval(field(table, field), start, end), numericRange(table, field, values, start, end, i == bins - 1)));
       }
-      result.add(bucket(table, filter, "Above " + high, DrillFilters.and(DrillFilters.condition(field, QCriteriaOperator.IS_NOT_BLANK), DrillFilters.condition(field, QCriteriaOperator.GREATER_THAN, high))));
+      result.add(bucket(table, filter, AnalysisFormatting.interval(field(table, field), high, null), DrillFilters.and(DrillFilters.condition(field, QCriteriaOperator.IS_NOT_BLANK), DrillFilters.condition(field, QCriteriaOperator.GREATER_THAN, high))));
       return (result);
    }
 
@@ -415,7 +480,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
     *******************************************************************************/
    private GroupCount bucket(String table, QQueryFilter filter, String label, QQueryFilter condition) throws QException
    {
-      return (new GroupCount(label, label, count(table, DrillFilters.and(filter, condition)), condition));
+      return (new GroupCount(label, label, count(table, DrillFilters.and(filter, condition)), condition, countShare()));
    }
 
 
@@ -430,7 +495,26 @@ public class StandInAnalysisBackend implements AnalysisBackend
       if(unit == DateUnit.DAY_OF_WEEK || unit == DateUnit.HOUR_OF_DAY)
       {
          return (mappedGroups(table, filter, field, records, v -> unit == DateUnit.DAY_OF_WEEK ? day(v, zone).getDayOfWeek().getValue()
-            : ((Instant) v).atZone(zone).getHour(), 24));
+            : ((Instant) v).atZone(zone).getHour(), 24).stream()
+            .map(g -> new GroupCount(g.value(), AnalysisFormatting.dateBucket(g.value(), unit, zone), g.count(), g.condition(), g.share())).toList());
+      }
+      if(unit == DateUnit.HOUR)
+      {
+         List<Instant> instants = records.stream().map(r -> (Instant) r.getValue(field)).filter(Objects::nonNull).sorted().toList();
+         List<GroupCount> hours = new ArrayList<>();
+         if(!instants.isEmpty())
+         {
+            Instant start = instants.getFirst().atZone(zone).truncatedTo(java.time.temporal.ChronoUnit.HOURS).toInstant();
+            while(!start.isAfter(instants.getLast()))
+            {
+               Instant end = start.plus(1, java.time.temporal.ChronoUnit.HOURS);
+               QQueryFilter condition = DrillFilters.and(DrillFilters.condition(field, QCriteriaOperator.GREATER_THAN_OR_EQUALS, start),
+                  DrillFilters.condition(field, QCriteriaOperator.LESS_THAN, end));
+               hours.add(new GroupCount(start, AnalysisFormatting.dateBucket(start, unit, zone), count(table, DrillFilters.and(filter, condition)), condition, countShare()));
+               start = end;
+            }
+         }
+         return (hours);
       }
       List<LocalDate> dates = records.stream().map(r -> r.getValue(field)).filter(Objects::nonNull).map(v -> day(v, zone)).sorted().toList();
       List<GroupCount> result = new ArrayList<>();
@@ -443,7 +527,8 @@ public class StandInAnalysisBackend implements AnalysisBackend
       while(!start.isAfter(last))
       {
          LocalDate end = next(start, unit);
-         result.add(bucket(table, filter, start + " / " + end, DrillFilters.dateRange(field, start, end, field(table, field).getType() == QFieldType.DATE_TIME, zone)));
+         QQueryFilter condition = DrillFilters.dateRange(field, start, end, field(table, field).getType() == QFieldType.DATE_TIME, zone);
+         result.add(new GroupCount(start, AnalysisFormatting.dateBucket(start, unit, zone), count(table, DrillFilters.and(filter, condition)), condition, countShare()));
          start = end;
       }
       return (result);
@@ -464,12 +549,13 @@ public class StandInAnalysisBackend implements AnalysisBackend
    /*******************************************************************************
     ** ISO weeks begin Monday.
     *******************************************************************************/
-   private static LocalDate floor(LocalDate date, DateUnit unit)
+   protected static LocalDate floor(LocalDate date, DateUnit unit)
    {
       return (switch(unit)
       {
          case WEEK -> date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
          case MONTH -> date.withDayOfMonth(1);
+         case QUARTER -> date.withMonth((date.getMonthValue() - 1) / 3 * 3 + 1).withDayOfMonth(1);
          case YEAR -> date.withDayOfYear(1);
          default -> date;
       });
@@ -480,12 +566,13 @@ public class StandInAnalysisBackend implements AnalysisBackend
    /*******************************************************************************
     ** Calendar arithmetic handles leap years and daylight savings.
     *******************************************************************************/
-   private static LocalDate next(LocalDate date, DateUnit unit)
+   protected static LocalDate next(LocalDate date, DateUnit unit)
    {
       return (switch(unit)
       {
          case WEEK -> date.plusWeeks(1);
          case MONTH -> date.plusMonths(1);
+         case QUARTER -> date.plusMonths(3);
          case YEAR -> date.plusYears(1);
          default -> date.plusDays(1);
       });
@@ -506,7 +593,13 @@ public class StandInAnalysisBackend implements AnalysisBackend
       result.put("max", null);
       for(AggregateResult row : aggregate(input))
       {
-         row.getAggregateValues().forEach((key, value) -> result.put(key.getOperator().name().toLowerCase(java.util.Locale.ROOT), value));
+         row.getAggregateValues().forEach((key, value) ->
+         {
+            if(key.getOperator() == AggregateOperator.MIN || key.getOperator() == AggregateOperator.MAX)
+            {
+               result.put(key.getOperator().name().toLowerCase(java.util.Locale.ROOT), value);
+            }
+         });
       }
       return (result);
    }
@@ -538,12 +631,14 @@ public class StandInAnalysisBackend implements AnalysisBackend
     ** Shapes use a primary-key prefix of at most the requested sample size.
     *******************************************************************************/
    @Override
-   public List<GroupCount> patterns(String table, QQueryFilter filter, String field, int sampleRows) throws QException
+   public PatternSummary patterns(String table, QQueryFilter filter, String field, int sampleRows) throws QException
    {
-      List<QRecord> records = rows(table, filter, Set.of(field, primaryKey(table)), sampleRows);
+      List<QRecord> records = rows(table, DrillFilters.and(filter, DrillFilters.nonNull(field, true)), Set.of(field, primaryKey(table)), sampleRows + 1);
+      boolean truncated = records.size() > sampleRows;
+      records = records.subList(0, Math.min(records.size(), sampleRows));
       QQueryFilter sampled = records.isEmpty() ? DrillFilters.in(primaryKey(table), List.of())
          : DrillFilters.condition(primaryKey(table), QCriteriaOperator.LESS_THAN_OR_EQUALS, records.getLast().getValue(primaryKey(table)));
-      return (mappedGroups(table, DrillFilters.and(filter, sampled), field, records, v -> shape(v.toString()), 10));
+      return (new PatternSummary(mappedGroups(table, estimating ? filter : DrillFilters.and(filter, sampled), field, records, v -> shape(v.toString()), 10), records.size(), truncated));
    }
 
 
@@ -575,8 +670,8 @@ public class StandInAnalysisBackend implements AnalysisBackend
       List<GroupCount> groups = new ArrayList<>();
       for(Map.Entry<Serializable, Set<Serializable>> entry : members.entrySet())
       {
-         QQueryFilter condition = DrillFilters.and(filter, DrillFilters.in(field, new ArrayList<>(entry.getValue())));
-         groups.add(new GroupCount(entry.getKey(), entry.getKey().toString(), count(table, condition), condition));
+         QQueryFilter condition = DrillFilters.in(field, new ArrayList<>(entry.getValue()));
+         groups.add(new GroupCount(entry.getKey(), entry.getKey().toString(), count(table, DrillFilters.and(filter, condition)), estimating ? condition : DrillFilters.and(filter, condition), countShare()));
       }
       return (groups.stream().sorted(Comparator.comparingLong(GroupCount::count).reversed().thenComparing(GroupCount::label)).limit(limit).toList());
    }
@@ -597,7 +692,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
    /*******************************************************************************
     ** Metadata lookup follows facade security checks.
     *******************************************************************************/
-   private static QFieldMetaData field(String table, String field)
+   protected static QFieldMetaData field(String table, String field)
    {
       return (QContext.getQInstance().getTable(table).getField(field));
    }
@@ -607,7 +702,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
    /*******************************************************************************
     ** Deterministic paging requires an addressable primary key.
     *******************************************************************************/
-   private static String primaryKey(String table)
+   protected static String primaryKey(String table)
    {
       return (QContext.getQInstance().getTable(table).getPrimaryKeyField());
    }
@@ -618,7 +713,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
     ** COUNT and COUNT_DISTINCT always read as integers: RC.5's RDBMS reader
     ** otherwise reads them as the field's type (a boolean count fails).
     *******************************************************************************/
-   private static Aggregate countOf(String field, AggregateOperator op)
+   protected static Aggregate countOf(String field, AggregateOperator op)
    {
       return (new Aggregate(field, op).withFieldType(QFieldType.INTEGER));
    }
@@ -628,7 +723,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
    /*******************************************************************************
     ** The value of one aggregate of a result row (0 when absent).
     *******************************************************************************/
-   private static BigDecimal number(AggregateResult row, String field, AggregateOperator op)
+   protected static BigDecimal number(AggregateResult row, String field, AggregateOperator op)
    {
       Serializable value = row.getAggregateValues().entrySet().stream().filter(e -> field.equals(e.getKey().getFieldName()) && op == e.getKey().getOperator())
          .map(Map.Entry::getValue).filter(Objects::nonNull).findFirst().orElse(0);
@@ -642,9 +737,9 @@ public class StandInAnalysisBackend implements AnalysisBackend
     ** Use strict comparison plus actual boundary spellings to preserve half-open
     ** membership. SQL backends use ordinary range predicates.
     *******************************************************************************/
-   private static QQueryFilter numericRange(String table, String field, List<BigDecimal> values, BigDecimal low, BigDecimal high, boolean closed)
+   protected QQueryFilter numericRange(String table, String field, List<BigDecimal> values, BigDecimal low, BigDecimal high, boolean closed)
    {
-      if(!isMemory(table))
+      if(estimating || !isMemory(table))
       {
          return (DrillFilters.range(field, low, high, closed));
       }
@@ -682,7 +777,7 @@ public class StandInAnalysisBackend implements AnalysisBackend
    /*******************************************************************************
     ** Isolate compatibility fixes to the RC.5 memory implementation.
     *******************************************************************************/
-   private static boolean isMemory(String table)
+   protected static boolean isMemory(String table)
    {
       return ("memory".equals(QContext.getQInstance().getBackend(QContext.getQInstance().getTable(table).getBackendName()).getBackendType()));
    }

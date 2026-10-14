@@ -60,22 +60,23 @@ public class TableProfiler
       String table = request.getTableName();
       QQueryFilter filter = scope.filter();
       long rows = backend.count(table, filter);
+      QQueryFilter drillFilter = scope.estimate() ? request.getFilter() : filter;
       TableProfile result = new TableProfile().withTableName(table).withFilter(DrillFilters.restoreTypes(request.getTableName(), request.getFilter())).withEstimate(scope.estimate())
-         .withSampleRows(scope.estimate() ? rows : 0L).withRowsScanned(scope.rowsScanned()).withTruncated(scope.truncated()).withAsOf(Instant.now())
-         .withRowCount(ProfileSupport.count("rows", rows, table, filter, null));
+         .withSampleRows(scope.estimate() ? scope.rowsScanned() : 0L).withRowsScanned(scope.rowsScanned()).withTruncated(scope.truncated()).withAsOf(Instant.now())
+         .withRowCount(ProfileSupport.count("rows", scope.estimate() ? scope.total() : rows, table, drillFilter, null));
       Map<String, AnalysisBackend.FieldCounts> counts = backend.fieldCounts(table, filter, fields.stream().map(QFieldMetaData::getName).toList());
       for(QFieldMetaData field : fields)
       {
          String name = field.getName();
          AnalysisBackend.FieldCounts c = counts.get(name);
          result.getFields().add(new FieldSummary().withField(name).withLabel(field.getLabel()).withType(field.getType().name())
-            .withCompleteness(ProfileSupport.share(rows - c.blanks(), rows)).withDistinct(c.distinct()).withUniqueness(ProfileSupport.share(c.distinct(), c.nonNull()))
-            .withConstant(c.distinct() == 1).withEmpty(c.blanks() == rows)
-            .withNulls(ProfileSupport.count("nulls", c.nulls(), table, filter, DrillFilters.nulls(name, field.getType().isStringLike())))
-            .withBlanks(ProfileSupport.count("blanks", c.blanks(), table, filter, c.blankFilter())));
+            .withCompleteness(AnalysisFormatting.ratio(c.completeness())).withDistinct(c.distinct()).withUniqueness(AnalysisFormatting.ratio(c.uniqueness()))
+            .withConstant(c.constant()).withEmpty(c.blanks() == rows)
+            .withNulls(ProfileSupport.count("nulls", c.nulls(), table, drillFilter, DrillFilters.nulls(name, field.getType().isStringLike())))
+            .withBlanks(ProfileSupport.count("blanks", c.blanks(), table, drillFilter, c.blankFilter())));
          if(rows > 0 && c.distinct() == rows && c.nulls() == 0)
          {
-            result.getCandidateKeys().add(key(table, filter, List.of(name), rows));
+            result.getCandidateKeys().add(key(table, drillFilter, List.of(name), rows));
          }
       }
       List<FieldSummary> ranked = result.getFields().stream().sorted(Comparator.comparing(FieldSummary::getUniqueness).reversed().thenComparing(FieldSummary::getField)).limit(8).toList();
@@ -86,7 +87,7 @@ public class TableProfiler
             List<String> pair = List.of(ranked.get(i).getField(), ranked.get(j).getField());
             if(rows > 0 && pair.stream().allMatch(f -> counts.get(f).nulls() == 0) && backend.duplicates(table, filter, pair, 1).isEmpty())
             {
-               result.getCandidateKeys().add(key(table, filter, pair, rows));
+               result.getCandidateKeys().add(key(table, drillFilter, pair, rows));
             }
          }
       }
@@ -97,7 +98,12 @@ public class TableProfiler
       {
          result.getHeatmap().getSeries().getFirst().getPoints().add(new Point().withX(field.getField()).withLabel(field.getLabel()).withY(field.getCompleteness()));
       }
-      if(scope.estimate() || scope.truncated())
+      if(scope.estimate())
+      {
+         result.getFields().forEach(f -> ProfileSupport.markEstimates(List.of(f.getNulls(), f.getBlanks())));
+         result.getWarnings().add(scope.warning());
+      }
+      else if(scope.truncated())
       {
          result.getWarnings().add("Profiles and candidate keys describe only the first " + rows + " rows by primary key.");
       }

@@ -96,7 +96,7 @@ public class AnalysisRunService
       AnalysisBackend.Scope scope = backend.scope(request.getTableName(), request.getFilter(), Boolean.TRUE.equals(request.getExact()));
       if(scope.estimate())
       {
-         return (service.compute(request, backend, scope).withDataVersion(DataVersion.of(backend, request.getTableName(), request.getFilter())));
+         return (service.compute(request, backend, scope).withDataVersion(DataVersion.of(service.backend(request.getTableName()), request.getTableName(), request.getFilter())));
       }
       return (exact(request).getColumnProfile());
    }
@@ -113,7 +113,7 @@ public class AnalysisRunService
       AnalysisBackend.Scope scope = backend.scope(request.getTableName(), request.getFilter(), Boolean.TRUE.equals(request.getExact()));
       if(scope.estimate())
       {
-         return (service.compute(request, backend, scope).withDataVersion(DataVersion.of(backend, request.getTableName(), request.getFilter())));
+         return (service.compute(request, backend, scope).withDataVersion(DataVersion.of(service.backend(request.getTableName()), request.getTableName(), request.getFilter())));
       }
       return (exact(request).getTableProfile());
    }

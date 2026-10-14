@@ -71,7 +71,7 @@ public class MinGroupSizeGuard
       }
       if(hidden > 0)
       {
-         result.add(new ValueCount().withLabel("Other (" + hidden + " groups below " + minimum + ")").withCount(count).withShare(share));
+         result.add(new ValueCount().withLabel("Other (" + hidden + " groups below " + minimum + ")").withCount(count).withShare(AnalysisFormatting.ratio(share)));
       }
       return (result);
    }
@@ -114,7 +114,7 @@ public class MinGroupSizeGuard
             List<ValueCount> booleanGroups = profile.getBooleans().stream().map(m -> new ValueCount().withValue(m.getKey()).withLabel(m.getLabel())
                .withCount(((Number) m.getValue()).longValue()).withShare(ProfileSupport.share(((Number) m.getValue()).longValue(), rows)).withDrill(m.getDrill())).toList();
             profile.withBooleans(groups(booleanGroups).stream().map(v -> ProfileSupport.metric(v.getValue() == null ? "other" : v.getValue().toString(), v.getCount(),
-               com.kingsrook.qbits.dataanalysis.result.ValueType.COUNT).withLabel(v.getLabel()).withDrill(v.getDrill())).toList());
+               com.kingsrook.qbits.dataanalysis.result.ValueType.COUNT).withDrill(v.getDrill())).toList());
          }
       }
       if(profile.getNumeric() != null)

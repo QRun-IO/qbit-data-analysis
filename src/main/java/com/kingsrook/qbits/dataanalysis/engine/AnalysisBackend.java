@@ -38,16 +38,33 @@ public interface AnalysisBackend
     *******************************************************************************/
    enum DateUnit
    {
-      DAY, WEEK, MONTH, YEAR, DAY_OF_WEEK, HOUR_OF_DAY
+      DAY, WEEK, MONTH, QUARTER, YEAR, HOUR, DAY_OF_WEEK, HOUR_OF_DAY
    }
 
 
 
    /*******************************************************************************
-    ** Actual row coverage and deterministic selected population.
+    ** Computation scope, observed coverage and optional native sampling percentage.
     *******************************************************************************/
-   record Scope(QQueryFilter filter, long total, long rowsScanned, boolean truncated, boolean estimate)
+   record Scope(QQueryFilter filter, long total, long rowsScanned, boolean truncated, boolean estimate, BigDecimal samplePercent)
    {
+      /*******************************************************************************
+       ** Exact and prefix scopes have no random sampling percentage.
+       *******************************************************************************/
+      public Scope(QQueryFilter filter, long total, long rowsScanned, boolean truncated, boolean estimate)
+      {
+         this(filter, total, rowsScanned, truncated, estimate, null);
+      }
+
+      /*******************************************************************************
+       ** Explain whether counts extrapolate a random sample or describe a prefix.
+       *******************************************************************************/
+      public String warning()
+      {
+         return (samplePercent == null ? "Estimate from the first " + rowsScanned + " rows by id"
+            : "Estimate from a random sample of about " + rowsScanned + " rows (" + samplePercent.stripTrailingZeros().toPlainString()
+               + "%). Counts are scaled to the full " + total + " rows; run exact for exact numbers.");
+      }
    }
 
 
@@ -55,8 +72,16 @@ public interface AnalysisBackend
    /*******************************************************************************
     ** Blank includes null and whitespace; distinct excludes null.
     *******************************************************************************/
-   record FieldCounts(long nonNull, long nulls, long blanks, long distinct, QQueryFilter blankFilter, QQueryFilter distinctFilter)
+   record FieldCounts(long nonNull, long nulls, long blanks, long distinct, QQueryFilter blankFilter, QQueryFilter distinctFilter, BigDecimal uniqueness, BigDecimal completeness, boolean constant)
    {
+      /*******************************************************************************
+       ** Exact and prefix counters use their own population for ratios.
+       *******************************************************************************/
+      public FieldCounts(long nonNull, long nulls, long blanks, long distinct, QQueryFilter blankFilter, QQueryFilter distinctFilter)
+      {
+         this(nonNull, nulls, blanks, distinct, blankFilter, distinctFilter, ProfileSupport.share(distinct, nonNull),
+            ProfileSupport.share(nonNull + nulls - blanks, nonNull + nulls), distinct == 1);
+      }
    }
 
 
@@ -64,8 +89,15 @@ public interface AnalysisBackend
    /*******************************************************************************
     ** Group and exact predicate producing its members.
     *******************************************************************************/
-   record GroupCount(Serializable value, String label, long count, QQueryFilter condition)
+   record GroupCount(Serializable value, String label, long count, QQueryFilter condition, BigDecimal share)
    {
+      /*******************************************************************************
+       ** Ordinary groups derive their share from the profiler population.
+       *******************************************************************************/
+      public GroupCount(Serializable value, String label, long count, QQueryFilter condition)
+      {
+         this(value, label, count, condition, null);
+      }
    }
 
 
@@ -89,12 +121,21 @@ public interface AnalysisBackend
 
 
    /*******************************************************************************
-    ** Exact filtered count.
+    ** Actual inspected non-null values, independent of estimated population counts.
+    *******************************************************************************/
+   record PatternSummary(List<GroupCount> groups, long values, boolean truncated)
+   {
+   }
+
+
+
+   /*******************************************************************************
+    ** Filtered count; a native estimate scales conditional counts to its population.
     *******************************************************************************/
    long count(String table, QQueryFilter filter) throws QException;
 
    /*******************************************************************************
-    ** Select the bounded population used consistently by all operations.
+    ** Configure a request-local exact, prefix or native sampling scope.
     *******************************************************************************/
    Scope scope(String table, QQueryFilter filter, boolean exact) throws QException;
 
@@ -136,7 +177,7 @@ public interface AnalysisBackend
    /*******************************************************************************
     ** Top shapes over a bounded primary-key prefix.
     *******************************************************************************/
-   List<GroupCount> patterns(String table, QQueryFilter filter, String field, int sampleRows) throws QException;
+   PatternSummary patterns(String table, QQueryFilter filter, String field, int sampleRows) throws QException;
 
    /*******************************************************************************
     ** Top groups with count greater than one.

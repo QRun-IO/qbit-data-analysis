@@ -75,10 +75,62 @@ public final class DrillFilters
     *******************************************************************************/
    public static Drill drill(String table, QQueryFilter original, QQueryFilter condition)
    {
-      return (new Drill().withTableName(table).withFilter(and(original, condition)));
+      QQueryFilter filter = and(original, condition);
+      var instance = com.kingsrook.qqq.backend.core.context.QContext.getQInstance();
+      if(instance != null && "memory".equals(instance.getBackend(instance.getTable(table).getBackendName()).getBackendType()))
+      {
+         filter = memoryTemporalBounds(restoreTypes(table, filter));
+      }
+      return (new Drill().withTableName(table).withFilter(filter));
    }
 
 
+
+   /*******************************************************************************
+    ** Memory's inclusive lower bound uses Java equality, which differs after
+    ** HTTP turns dates into strings. Strict lower bounds avoid that equality.
+    ** Only memory uses this adjustment: SQL timestamp precision may be coarser.
+    *******************************************************************************/
+   private static QQueryFilter memoryTemporalBounds(QQueryFilter filter)
+   {
+      filter.setSubFilters(new java.util.ArrayList<>(filter.getSubFilters()));
+      for(var criterion : new java.util.ArrayList<>(filter.getCriteria()))
+      {
+         if(criterion.getValues() != null && !criterion.getValues().isEmpty()
+            && criterion.getValues().stream().allMatch(v -> v instanceof java.time.Instant || v instanceof LocalDate)
+            && (criterion.getOperator() == QCriteriaOperator.EQUALS || criterion.getOperator() == QCriteriaOperator.IN))
+         {
+            QQueryFilter members = new QQueryFilter().withBooleanOperator(QQueryFilter.BooleanOperator.OR);
+            for(Serializable value : criterion.getValues())
+            {
+               members.withSubFilter(range(criterion.getFieldName(), value, value, true));
+            }
+            filter.getCriteria().remove(criterion);
+            filter.withSubFilter(members);
+            continue;
+         }
+         if(criterion.getValues() != null && criterion.getValues().size() == 1)
+         {
+            Serializable value = criterion.getValues().getFirst();
+            if(value instanceof java.time.Instant || value instanceof LocalDate)
+            {
+               Serializable previous = value instanceof java.time.Instant instant ? instant.minusNanos(1) : ((LocalDate) value).minusDays(1);
+               if(criterion.getOperator() == QCriteriaOperator.GREATER_THAN_OR_EQUALS)
+               {
+                  criterion.setOperator(QCriteriaOperator.GREATER_THAN);
+                  criterion.setValues(List.of(previous));
+               }
+               else if(criterion.getOperator() == QCriteriaOperator.LESS_THAN)
+               {
+                  criterion.setOperator(QCriteriaOperator.LESS_THAN_OR_EQUALS);
+                  criterion.setValues(List.of(previous));
+               }
+            }
+         }
+      }
+      filter.getSubFilters().forEach(DrillFilters::memoryTemporalBounds);
+      return (filter);
+   }
 
    /*******************************************************************************
     ** One criterion, including predicates without operands.
@@ -116,7 +168,7 @@ public final class DrillFilters
       QQueryFilter result = condition(field, QCriteriaOperator.IS_NOT_BLANK);
       if(string)
       {
-         result.withBooleanOperator(QQueryFilter.BooleanOperator.OR).withCriteria(field, QCriteriaOperator.EQUALS, "");
+         result.withBooleanOperator(QQueryFilter.BooleanOperator.OR).withSubFilter(emptyString(field));
       }
       return (result);
    }
@@ -128,7 +180,8 @@ public final class DrillFilters
     *******************************************************************************/
    public static QQueryFilter value(String field, Serializable value, boolean string)
    {
-      return (value == null ? nulls(field, string) : condition(field, QCriteriaOperator.EQUALS, value));
+      return (value == null ? nulls(field, string) : "".equals(value) ? emptyString(field)
+         : value instanceof java.time.Instant || value instanceof LocalDate ? range(field, value, value, true) : condition(field, QCriteriaOperator.EQUALS, value));
    }
 
 
@@ -181,10 +234,32 @@ public final class DrillFilters
     *******************************************************************************/
    public static QQueryFilter in(String field, List<? extends Serializable> values)
    {
+      if(values.stream().anyMatch(v -> v instanceof java.time.Instant || v instanceof LocalDate))
+      {
+         QQueryFilter result = new QQueryFilter().withBooleanOperator(QQueryFilter.BooleanOperator.OR);
+         values.forEach(value -> result.withSubFilter(range(field, value, value, true)));
+         return (result);
+      }
+      if(values.contains(""))
+      {
+         List<? extends Serializable> nonEmpty = values.stream().filter(v -> !"".equals(v)).toList();
+         return (new QQueryFilter().withBooleanOperator(QQueryFilter.BooleanOperator.OR).withSubFilter(emptyString(field)).withSubFilter(in(field, nonEmpty)));
+      }
       return (values.isEmpty() ? condition(field, QCriteriaOperator.FALSE) : new QQueryFilter().withCriteria(field, QCriteriaOperator.IN, values));
    }
 
 
+
+   /*******************************************************************************
+    ** Core HTTP interpretation treats empty string operands as missing inputs.
+    ** A zero-length predicate expresses the same set without an empty operand.
+    *******************************************************************************/
+   private static QQueryFilter emptyString(String field)
+   {
+      return (new QQueryFilter().withCriteria(new com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria(field, QCriteriaOperator.EQUALS, 0)
+         .withFieldFunction(new com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunction().withFieldName(field)
+            .withFunctionTypeIdentifier(com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.StringLengthFunction.IDENTIFIER))));
+   }
 
    /*******************************************************************************
     ** JSON has no temporal scalar types. Restore them from current metadata before

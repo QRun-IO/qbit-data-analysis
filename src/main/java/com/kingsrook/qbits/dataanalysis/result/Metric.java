@@ -31,6 +31,7 @@ import com.fasterxml.jackson.annotation.JsonAutoDetect;
 @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
 public class Metric implements Serializable
 {
+   private Boolean estimate = false;
    private String key;
    private String label;
    private Serializable value;
@@ -41,6 +42,23 @@ public class Metric implements Serializable
    private String suppressedReason;
 
 
+
+   /*******************************************************************************
+    ** Whether the metric describes a sampled estimate.
+    *******************************************************************************/
+   public Boolean getEstimate()
+   {
+      return (estimate);
+   }
+
+   /*******************************************************************************
+    ** Mark an estimated metric independently of the exact population row total.
+    *******************************************************************************/
+   public Metric withEstimate(Boolean estimate)
+   {
+      this.estimate = estimate;
+      return (this);
+   }
 
    /*******************************************************************************
     ** Getter for key.

@@ -25,6 +25,7 @@ import java.util.concurrent.Executor;
 import com.kingsrook.qbits.dataanalysis.engine.AnalysisBackend;
 import com.kingsrook.qbits.dataanalysis.engine.AnalysisSecurity;
 import com.kingsrook.qbits.dataanalysis.engine.ColumnProfiler;
+import com.kingsrook.qbits.dataanalysis.engine.CoreAnalysisBackend;
 import com.kingsrook.qbits.dataanalysis.engine.DistinctValues;
 import com.kingsrook.qbits.dataanalysis.engine.DuplicateFinder;
 import com.kingsrook.qbits.dataanalysis.engine.EffectiveConfigResolver;
@@ -82,7 +83,7 @@ public class DataAnalysisService
    public Capabilities capabilities(String table) throws QException
    {
       return (new Capabilities().withTableName(table).withFields(security.analyzableFields(table).stream().map(QFieldMetaData::getName).toList())
-         .withConfig(configs.resolve(table)).withBackend("RC.5 stand-in; deterministic primary-key prefix sampling"));
+         .withConfig(configs.resolve(table)).withBackend(CoreAnalysisBackend.capabilities(table).isEmpty() ? "Streamed analysis" : "Core aggregate pushdown"));
    }
 
 
@@ -163,11 +164,11 @@ public class DataAnalysisService
 
 
    /*******************************************************************************
-    ** Fresh per-request backend, ready for a future core-backed implementation.
+    ** Select core pushdown when the backend advertises analysis capabilities.
     *******************************************************************************/
    public AnalysisBackend backend(String table) throws QException
    {
-      return (new StandInAnalysisBackend(configs.resolve(table)));
+      return (CoreAnalysisBackend.capabilities(table).isEmpty() ? new StandInAnalysisBackend(configs.resolve(table)) : new CoreAnalysisBackend(configs.resolve(table)));
    }
 
 

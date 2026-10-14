@@ -64,7 +64,60 @@ import static org.assertj.core.api.Assertions.within;
 abstract class EngineContractTest extends EngineFixture
 {
    /*******************************************************************************
-    ** All numeric moments and percentiles agree to 1e-9.
+    ** Every emitted key across all profile kinds has a label, on every backend.
+    *******************************************************************************/
+   @Test
+   void presentationAcrossProfileKinds() throws Exception
+   {
+      java.util.Set<String> keys = new java.util.HashSet<>();
+      for(String field : List.of("amount", "quantity", "note", "paid", "order_date", "created"))
+      {
+         ColumnProfile profile = service.columnProfile(column(field));
+         java.util.List<Metric> metrics = new java.util.ArrayList<>(profile.getCounts());
+         if(profile.getNumeric() != null)
+         {
+            metrics.addAll(profile.getNumeric().getMetrics());
+         }
+         if(profile.getText() != null)
+         {
+            metrics.addAll(profile.getText().getMetrics());
+         }
+         if(profile.getDates() != null)
+         {
+            metrics.addAll(profile.getDates().getMetrics());
+            assertThat(profile.getChart().getX().getLabel()).endsWith(" (day)");
+            assertThat(profile.getChart().getSeries().getFirst().getPoints().getFirst().getX().toString()).isEqualTo("2026-01-01");
+         }
+         if(profile.getBooleans() != null)
+         {
+            metrics.addAll(profile.getBooleans());
+         }
+         for(Metric metric : metrics)
+         {
+            keys.add(metric.getKey());
+            assertThat(metric.getLabel()).isEqualTo(com.kingsrook.qbits.dataanalysis.engine.MetricLabels.label(metric.getKey(), metric.getValueType()));
+            assertThat(metric.getFormatted()).isNotBlank();
+         }
+      }
+      assertThat(keys).containsExactlyInAnyOrder("rows", "nonNull", "nulls", "blanks", "distinct", "uniqueness", "min", "max", "mean", "sum", "stddev",
+         "p1", "p5", "p25", "p50", "p75", "p95", "p99", "zeros", "negatives", "outliers", "minLength", "maxLength", "meanLength", "true", "false", "range");
+      ColumnProfile amount = service.columnProfile(column("amount"));
+      assertThat(metric(amount.getNumeric().getMetrics(), "sum").getFormatted()).isEqualTo("$1,170.00");
+      assertThat(amount.getNumeric().getHistogram()).allSatisfy(v -> assertThat(v.getLabel()).contains("$"));
+      Metric uniqueness = metric(amount.getCounts(), "uniqueness");
+      assertThat(uniqueness.getValueType().name()).isEqualTo("PERCENT");
+      assertThat(uniqueness.getValue().toString()).isEqualTo("0.727273");
+      assertThat(uniqueness.getFormatted()).isEqualTo("72.7%");
+      assertThat(metric(service.columnProfile(column("created")).getDates().getMetrics(), "min").getFormatted()).isEqualTo("2026-01-01 06:00");
+      assertThat(service.columnProfile(column("note")).getWarnings()).isEmpty();
+      var table = service.tableProfile(new TableProfileRequest().withTableName("orders").withFields(List.of("note")));
+      assertThat(table.getRowCount().getLabel()).isEqualTo("Rows");
+      assertThat(table.getFields().getFirst().getNulls().getLabel()).isEqualTo("Nulls");
+      assertThat(table.getFields().getFirst().getBlanks().getLabel()).isEqualTo("Blanks");
+   }
+
+   /*******************************************************************************
+    ** Decimal moments retain ten significant digits; drills retain exact membership.
     *******************************************************************************/
    @Test
    void numericProfile() throws Exception
@@ -80,12 +133,12 @@ abstract class EngineContractTest extends EngineFixture
          Map.entry("zeros", "2"), Map.entry("negatives", "1"), Map.entry("outliers", "1"));
       for(var entry : expected.entrySet())
       {
-         assertMetric(result.getNumeric().getMetrics(), entry.getKey(), entry.getValue());
+         assertMetric(result.getNumeric().getMetrics(), entry.getKey(), new BigDecimal(entry.getValue()).round(new java.math.MathContext(10)).toPlainString());
       }
       double[] values = {-10, 0, 0, 10, 10, 20, 20, 30, 40, 50, 1000};
       double mean = 1170.0 / 11;
       double variance = java.util.Arrays.stream(values).map(v -> Math.pow(v - mean, 2)).sum() / 10;
-      assertMetric(result.getNumeric().getMetrics(), "stddev", Double.toString(Math.sqrt(variance)));
+      assertMetric(result.getNumeric().getMetrics(), "stddev", BigDecimal.valueOf(Math.sqrt(variance)).round(new java.math.MathContext(10)).toPlainString());
       assertThat(result.getNumeric().getHistogram()).hasSize(22);
       assertThat(result.getNumeric().getHistogram().stream().mapToLong(v -> v.getCount()).sum()).isEqualTo(11);
       assertThat(result.getNumeric().getOutliers()).singleElement().satisfies(v -> assertThat(new BigDecimal(v.getValue().toString())).isEqualByComparingTo("1000"));
@@ -156,7 +209,7 @@ abstract class EngineContractTest extends EngineFixture
       assertThat(table.getFields()).anySatisfy(f ->
       {
          assertThat(f.getField()).isEqualTo("note");
-         assertThat(f.getCompleteness().doubleValue()).isCloseTo(8.0 / 12, within(1e-9));
+         assertThat(f.getCompleteness().doubleValue()).isEqualTo(0.666667);
       });
       assertThat(table.getCandidateKeys()).anyMatch(k -> k.getFields().equals(List.of("id")));
       var pairs = service.tableProfile(new TableProfileRequest().withTableName("orders").withFields(List.of("status", "quantity")));
@@ -279,12 +332,26 @@ abstract class EngineContractTest extends EngineFixture
    void estimatesRunsAndCache() throws Exception
    {
       config.withDefaultSampleThresholdRows(5).withDefaultSampleRows(4);
-      service = new DataAnalysisService(config);
+      service = newService(config, java.util.concurrent.ForkJoinPool.commonPool());
       ColumnProfile estimate = service.columnProfile(column("amount"));
       assertThat(estimate.getEstimate()).isTrue();
-      assertThat(estimate.getSampleRows()).isEqualTo(4);
-      assertMetric(estimate.getCounts(), "rows", "4");
-      assertMetric(estimate.getNumeric().getMetrics(), "sum", "10");
+      assertMetric(estimate.getCounts(), "rows", "12");
+      assertThat(metric(estimate.getCounts(), "rows").getEstimate()).isFalse();
+      assertThat(metric(estimate.getCounts(), "nonNull").getEstimate()).isTrue();
+      assertThat(metric(estimate.getCounts(), "nonNull").getFormatted()).startsWith("≈ ");
+      assertDrills(estimate);
+      assertThat(count(metric(estimate.getCounts(), "rows").getDrill())).isEqualTo(12);
+      if(service.backend("orders") instanceof com.kingsrook.qbits.dataanalysis.engine.CoreAnalysisBackend)
+      {
+         assertThat(estimate.getWarnings()).anyMatch(w -> w.contains("random sample") && w.contains("scaled to the full 12 rows"));
+      }
+      else
+      {
+         assertThat(estimate.getSampleRows()).isEqualTo(4);
+         assertMetric(estimate.getCounts(), "nonNull", "4");
+         assertMetric(estimate.getNumeric().getMetrics(), "sum", "10");
+         assertThat(estimate.getWarnings()).contains("Estimate from the first 4 rows by id");
+      }
       String id = service.startExactRun(column("amount"));
       RunStatus run = awaitRun(id);
       assertThat(run.getStatus()).isEqualTo("COMPLETE");
@@ -395,7 +462,7 @@ abstract class EngineContractTest extends EngineFixture
       assertThat(ColumnProfiler.autoBucket(first, first.plusYears(2).plusDays(1))).isEqualTo(AnalysisBackend.DateUnit.MONTH);
       assertThat(ColumnProfiler.autoBucket(first, first.plusYears(10))).isEqualTo(AnalysisBackend.DateUnit.MONTH);
       assertThat(ColumnProfiler.autoBucket(first, first.plusYears(10).plusDays(1))).isEqualTo(AnalysisBackend.DateUnit.YEAR);
-      for(AnalysisBackend.DateUnit unit : List.of(AnalysisBackend.DateUnit.WEEK, AnalysisBackend.DateUnit.MONTH, AnalysisBackend.DateUnit.YEAR))
+      for(AnalysisBackend.DateUnit unit : List.of(AnalysisBackend.DateUnit.WEEK, AnalysisBackend.DateUnit.MONTH, AnalysisBackend.DateUnit.QUARTER, AnalysisBackend.DateUnit.YEAR))
       {
          var buckets = service.backend("orders").dateBuckets("orders", null, "order_date", unit, java.time.ZoneId.of("America/Chicago"));
          assertThat(buckets.stream().mapToLong(AnalysisBackend.GroupCount::count).sum()).isEqualTo(12);
@@ -444,6 +511,10 @@ abstract class EngineContractTest extends EngineFixture
     *******************************************************************************/
    private void walk(JsonNode node) throws Exception
    {
+      if(node.path("estimate").asBoolean(false))
+      {
+         return;
+      }
       if(node.isObject())
       {
          if(node.hasNonNull("drill"))
@@ -551,7 +622,7 @@ abstract class EngineContractTest extends EngineFixture
       int previous = runs().size();
       service.columnProfile(column("amount"));
       assertThat(runs()).hasSize(previous + 1);
-      service = new DataAnalysisService(config, task ->
+      service = newService(config, task ->
       {
          throw new java.util.concurrent.RejectedExecutionException("test");
       });
@@ -632,7 +703,7 @@ abstract class EngineContractTest extends EngineFixture
    void executionFailureAndGuardedBooleans() throws Exception
    {
       List<Runnable> jobs = new java.util.ArrayList<>();
-      service = new DataAnalysisService(config, jobs::add);
+      service = newService(config, jobs::add);
       String id = service.startExactRun(column("amount"));
       var table = instance.getTables().remove("orders");
       jobs.getFirst().run();
@@ -641,7 +712,7 @@ abstract class EngineContractTest extends EngineFixture
       assertThat(service.getRun(id).getError()).contains("could not be completed");
       assertThat(runs().getFirst().getValue("result_json")).isNull();
       config.withDefaultMinGroupSize(3);
-      service = new DataAnalysisService(config, Runnable::run);
+      service = newService(config, Runnable::run);
       var paid = service.columnProfile(column("paid"));
       assertThat(paid.getBooleans()).anySatisfy(m ->
       {
