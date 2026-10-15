@@ -46,7 +46,7 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 
 ### Changed
 
-- UI API extension data-analysis 1.5.0 (requires QQQ 4.1.0-RC.14, UI API 1.6.0): operationIds, standard error responses with BasicErrorResponseV1, extension tags, contract validation for operationIds and schema references, and HTTP error envelope regression assertions.
+- UI API extension data-analysis 1.5.0 (requires QQQ 4.1.0-RC.15, UI API 1.6.0): operationIds, standard error responses with BasicErrorResponseV1, extension tags, contract validation for operationIds and schema references, and HTTP error envelope regression assertions.
 
 - Pin QQQ 4.1.0-RC.7 and replace the temporary help loader with core bundle registration and startup sync.
 
