@@ -1,5 +1,44 @@
 components:
   schemas:
+    BasicErrorResponseV1:
+      description: "The error body of every UI API operation (core and extensions)."
+      properties:
+        error:
+          description: "The error message (the same as message; kept for clients of\
+            \ UI API 1.0 to 1.5)."
+          type: "string"
+        code:
+          description: "A stable, machine-readable code. Well-known values: BAD_REQUEST\
+            \ (400), UNAUTHENTICATED (401),\nPERMISSION_DENIED (403), NOT_FOUND (404),\
+            \ CONFLICT (409), RATE_LIMITED (429), INTERNAL_ERROR (500),\nERROR (other).\
+            \ Extensions may add codes; treat an unknown code by the HTTP status.\
+            \ Since 1.6.0."
+          type: "string"
+        message:
+          description: "A message to show the user. Since 1.6.0."
+          type: "string"
+        fieldErrors:
+          description: "Errors about particular request fields, when known. Since\
+            \ 1.6.0."
+          items:
+            properties:
+              field:
+                description: "The field (or parameter) name."
+                type: "string"
+              message:
+                description: "The error about that field."
+                type: "string"
+              code:
+                description: "An optional machine-readable code, e.g. REQUIRED, TOO_LONG,\
+                  \ PATTERN."
+                type: "string"
+            type: "object"
+          type: "array"
+        traceId:
+          description: "Identifies this request in the server logs (also the X-QQQ-Trace-Id\
+            \ response header); quote it when reporting a problem. Since 1.6.0."
+          type: "string"
+      type: "object"
     DataAnalysisAxisV1:
       nullable: true
       properties:
@@ -1727,6 +1766,7 @@ components:
           type: "string"
         isAscending:
           description: "Whether this order-by is ascending or descending"
+          nullable: true
           type: "boolean"
       type: "object"
     QueryFilter:
@@ -1756,16 +1796,49 @@ components:
       type: "object"
   securitySchemes:
     sessionUuidCookie:
+      description: "The session cookie set by POST /qqq/v1/manageSession (web clients)."
       in: "cookie"
       name: "sessionUUID"
       type: "apiKey"
+    bearerAuth:
+      bearerFormat: "JWT or session UUID"
+      description: "`Authorization: Bearer <token>`, where the token is either\n-\
+        \ an OAuth2 access token (a signed JWT) issued by the app's identity provider\
+        \ to the app's client,\n  or to its native client (`values.nativeClientId`\
+        \ in GET /qqq/v1/metaData/authentication), for\n  example from the device-authorization\
+        \ grant or auth-code + PKCE. It is verified against the\n  provider's keys\
+        \ (issuer, audience, expiry, signature) and gives the same user and permissions\n\
+        \  as signing in on the web. When it expires (401), refresh it at the provider\
+        \ and retry; or\n- a session UUID returned by POST /qqq/v1/manageSession,\
+        \ which the server keeps refreshed."
+      scheme: "bearer"
+      type: "http"
+    oauth2:
+      description: "The app's OAuth2 / OpenID Connect provider. The real endpoints\
+        \ come from the provider's discovery\ndocument: `{values.baseUrl}.well-known/openid-configuration`,\
+        \ with values from\nGET /qqq/v1/metaData/authentication. Native clients use\
+        \ `values.nativeClientId` (a public client)\nwith auth-code + PKCE (loopback\
+        \ or custom-scheme redirect URI registered at the provider) or the\ndevice-authorization\
+        \ grant (`device_authorization_endpoint`, RFC 8628), then send the access\
+        \ token\nas `Authorization: Bearer`."
+      flows:
+        authorizationCode:
+          authorizationUrl: "/authorize"
+          scopes:
+            email: "Email address"
+            offline_access: "A refresh token, to renew the access token without signing\
+              \ in again"
+            openid: "OpenID Connect sign-in"
+            profile: "Name, username and groups (permissions come from the groups)"
+          tokenUrl: "/token"
+      type: "oauth2"
 info:
   contact:
     email: "contact@kingsrook.com"
   description: "Profiles, pivots, comparisons, distribution shifts, correlations,\
     \ scatter samples, crosstabs and anomaly watch previews as the signed-in user."
   title: "QQQ Middleware API extension: data-analysis"
-  version: "1.4.0"
+  version: "1.5.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/qbit/data-analysis/saved/{id}/run:
@@ -1774,6 +1847,7 @@ paths:
         \ saved READ and source READ/Analyze. Drops unavailable fields with a warning\
         \ and returns the result typed by kind; inaccessible required axes or predicates\
         \ produce no result."
+      operationId: "postQbitDataAnalysisSavedByIdRun"
       parameters:
       - description: "Owner-scoped analysis run or watch id."
         in: "path"
@@ -1788,14 +1862,63 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisSavedResultV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Run a saved analysis"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/saved:
     get:
       description: "List core-visible saved analyses with name, kind, source table\
         \ label, owner, shared state, this viewer's starred flag and last update."
+      operationId: "getQbitDataAnalysisSaved"
       responses:
         200:
           content:
@@ -1803,14 +1926,63 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisSavedListV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "List visible saved analyses"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/saved/{id}/star:
     delete:
       description: "Remove the signed-in user's star on a visible saved analysis.\
         \ Idempotent; uses standard saved delete permission and owner locks."
+      operationId: "deleteQbitDataAnalysisSavedByIdStar"
       parameters:
       - description: "Owner-scoped analysis run or watch id."
         in: "path"
@@ -1825,13 +1997,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisStarV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Unstar a saved analysis"
+      tags:
+      - "data-analysis"
     put:
       description: "Star a visible saved analysis for the signed-in user. Idempotent;\
         \ uses standard saved insert permission and the personal star record lock."
+      operationId: "putQbitDataAnalysisSavedByIdStar"
       parameters:
       - description: "Owner-scoped analysis run or watch id."
         in: "path"
@@ -1846,16 +2067,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisStarV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Star a saved analysis"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/tables/{table}/sql:
     post:
       description: "Execute a typed analysis as the viewer and capture the main RDBMS\
         \ aggregate SQL from core QueryStat. Requires installed SQL Workbench and\
         \ its access permission. Non-RDBMS backends report unavailable; SQL is for\
         \ reading and record security remains enforced at runtime."
+      operationId: "postQbitDataAnalysisTablesByTableSql"
       parameters:
       - description: "QQQ table name to analyze."
         in: "path"
@@ -1876,15 +2146,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisSqlV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Read an analysis aggregate SQL statement"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/export:
     post:
       description: "Execute a typed analysis as the signed-in viewer and download\
         \ its result table as CSV or XLSX. Requires source READ/Analyze and FULL fields;\
         \ uses core report formats."
+      operationId: "postQbitDataAnalysisExport"
       requestBody:
         content:
           application/json:
@@ -1901,15 +2220,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisFileV1"
           description: "Analysis result file"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Export an analysis result"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/saved/{id}/export:
     get:
       description: "Re-run a visible saved analysis as the viewer, applying current\
         \ source permissions and dropping unavailable fields, then download its result\
         \ table as CSV or XLSX."
+      operationId: "getQbitDataAnalysisSavedByIdExport"
       parameters:
       - description: "Visible saved analysis id."
         in: "path"
@@ -1936,14 +2304,63 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisFileV1"
           description: "Analysis result file"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Export a saved analysis"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/tables/{table}/capabilities:
     get:
       description: "Discover whether the current user can analyze this table, readable\
         \ fields, chart defaults, limits and backend capabilities."
+      operationId: "getQbitDataAnalysisTablesByTableCapabilities"
       parameters:
       - description: "QQQ table name to analyze."
         in: "path"
@@ -1958,15 +2375,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisCapabilitiesV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Check analysis availability"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/tables/{table}/column-profile:
     post:
       description: "Profile one column of a table under a filter: counts, nulls, distinct\
         \ values, top values, numeric statistics and histogram, date patterns; every\
         \ number has a drill-through filter unless privacy suppresses it."
+      operationId: "postQbitDataAnalysisTablesByTableColumnProfile"
       parameters:
       - description: "QQQ table name to analyze."
         in: "path"
@@ -1987,14 +2453,63 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisColumnProfileV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Profile one column"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/tables/{table}/distinct-values:
     post:
       description: "Page through distinct stored values with display labels, counts\
         \ and drill-through filters; search narrows stored values."
+      operationId: "postQbitDataAnalysisTablesByTableDistinctValues"
       parameters:
       - description: "QQQ table name to analyze."
         in: "path"
@@ -2015,15 +2530,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisDistinctValuesPageV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "List distinct column values"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/tables/{table}/compare:
     post:
       description: "Compare filtered A with filtered B (null means the whole permitted\
         \ table). Return means, medians or category shares, B-minus-A deltas, valid\
         \ significance tests and count-equivalent drills. Only FULL fields are accepted."
+      operationId: "postQbitDataAnalysisTablesByTableCompare"
       parameters:
       - description: "QQQ table name to analyze."
         in: "path"
@@ -2044,15 +2608,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisCompareV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Compare two populations"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/tables/{table}/shift:
     post:
       description: "Compare category shares or numeric quartiles across session-timezone\
         \ calendar buckets. Compute descriptive PSI between the first and last complete\
         \ nonempty buckets using fixed categories or baseline quartile bins."
+      operationId: "postQbitDataAnalysisTablesByTableShift"
       parameters:
       - description: "QQQ table name to analyze."
         in: "path"
@@ -2073,16 +2686,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisShiftV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Measure distribution shift over time"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/tables/{table}/correlation:
     post:
       description: "Compute a Pearson correlation matrix for 2 to 12 distinct FULL\
         \ numeric fields, using paired non-null records. Every cell includes n and\
         \ parameters for the scatter endpoint; core pushes down CORR or uses bounded\
         \ streaming."
+      operationId: "postQbitDataAnalysisTablesByTableCorrelation"
       parameters:
       - description: "QQQ table name to analyze."
         in: "path"
@@ -2103,16 +2765,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisCorrelationV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Find numeric relationships"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/tables/{table}/scatter:
     post:
       description: "Return at most 2000 paired numeric points as the user, ordered\
         \ by primary key when core query sampling is unavailable, plus a least-squares\
         \ line fitted to the sample. Privacy disables individual drills and suppresses\
         \ small populations."
+      operationId: "postQbitDataAnalysisTablesByTableScatter"
       parameters:
       - description: "QQQ table name to analyze."
         in: "path"
@@ -2133,16 +2844,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisScatterV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Inspect a numeric relationship"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/tables/{table}/crosstab:
     post:
       description: "Count combinations of two FULL fields with row and column shares,\
         \ up to 20 categories per axis plus Other. Test independence using chi-square\
         \ and Cramer V after pooling low expected counts; privacy suppresses small\
         \ cells and their drills."
+      operationId: "postQbitDataAnalysisTablesByTableCrosstab"
       parameters:
       - description: "QQQ table name to analyze."
         in: "path"
@@ -2163,15 +2923,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisCrosstabV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Cross-tabulate two fields"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/watches/{id}/preview:
     post:
       description: "Compute complete time buckets and a detector verdict under the\
         \ signed-in user's READ, Analyze and FULL-field permissions. Includes a baseline\
         \ band annotation. Does not update the watch or raise alerts."
+      operationId: "postQbitDataAnalysisWatchesByIdPreview"
       parameters:
       - description: "Owner-scoped analysis run or watch id."
         in: "path"
@@ -2186,15 +2995,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisWatchPreviewV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Preview an anomaly watch"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/tables/{table}/pivot:
     post:
       description: "Group records by up to 3 row and 2 column fields (with date or\
         \ numeric buckets) and compute counts, sums, averages, min/max, distinct counts\
         \ or percentiles per cell; every cell has a drill-through filter."
+      operationId: "postQbitDataAnalysisTablesByTablePivot"
       parameters:
       - description: "QQQ table name to analyze."
         in: "path"
@@ -2215,14 +3073,63 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisPivotV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Explore a pivot table"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/tables/{table}/table-profile:
     post:
       description: "Profile readable fields under a filter for completeness, uniqueness,\
         \ constant or empty columns and candidate keys."
+      operationId: "postQbitDataAnalysisTablesByTableTableProfile"
       parameters:
       - description: "QQQ table name to analyze."
         in: "path"
@@ -2243,14 +3150,63 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisTableProfileV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Profile table completeness and keys"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/tables/{table}/duplicates:
     post:
       description: "Group matching records by the selected readable fields and return\
         \ repeated tuples with counts and drill-through filters."
+      operationId: "postQbitDataAnalysisTablesByTableDuplicates"
       parameters:
       - description: "QQQ table name to analyze."
         in: "path"
@@ -2271,15 +3227,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisDuplicatesResultV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Find duplicate groups"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/runs:
     post:
       description: "Start an owner-scoped exact column or table profile. Poll the\
         \ returned runId until COMPLETE or FAILED; results honor the current session\
         \ permissions."
+      operationId: "postQbitDataAnalysisRuns"
       requestBody:
         content:
           application/json:
@@ -2293,15 +3298,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisRunStartedV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Start an exact profile run"
+      tags:
+      - "data-analysis"
   /qqq/v1/qbit/data-analysis/runs/{runId}:
     get:
       description: "Read status, timestamps and the typed columnProfile or tableProfile\
         \ result of an owner-scoped run. Completed results are rechecked against current\
         \ permissions."
+      operationId: "getQbitDataAnalysisRunsByRunId"
       parameters:
       - description: "Owner-scoped analysis run or watch id."
         in: "path"
@@ -2316,7 +3370,61 @@ paths:
               schema:
                 $ref: "#/components/schemas/DataAnalysisRunStatusV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Get an exact profile run"
+      tags:
+      - "data-analysis"
+servers:
+- description: "The QQQ server that serves this document (paths include /qqq/v1)."
+  url: "/"
+tags:
+- description: "Operations of the data-analysis extension."
+  name: "data-analysis"

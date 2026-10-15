@@ -136,6 +136,13 @@ class DataAnalysisApiTest extends EngineFixture
       }
       var response = invoker.invoke(request);
       assertThat(response.getStatus()).as(response.getBody()).isEqualTo(status);
+      if(status >= 400)
+      {
+         for(String field : List.of("error", "code", "message", "traceId"))
+         {
+            assertThat(response.getJson().path(field).asText()).as(field).isNotBlank();
+         }
+      }
       return (response.getJson());
    }
 
@@ -282,7 +289,7 @@ class DataAnalysisApiTest extends EngineFixture
    }
 
    /*******************************************************************************
-    ** Generated fragment is committed verbatim and has all fourteen operations.
+    ** Generated fragment matches the committed contract and validates all references.
     *******************************************************************************/
    @Test
    void contract() throws Exception
@@ -296,8 +303,9 @@ class DataAnalysisApiTest extends EngineFixture
          Files.createDirectories(path.getParent());
          Files.writeString(path, yaml);
       }
-      assertThat(Files.exists(path)).as("Regenerate with ./mvnw -o test -Dtest=DataAnalysisApiTest#contract -Dopenapi.write=true -Dqqq.snapshot.version=4.1.0-DATAANALYSIS-SNAPSHOT").isTrue();
+      assertThat(Files.exists(path)).as("Regenerate with ./mvnw -o test -Dtest=DataAnalysisApiTest#contract -Dopenapi.write=true -Dqqq.snapshot.version=4.1.99-SNAPSHOT").isTrue();
       assertThat(Files.readString(path).replace("\r\n", "\n")).as("OpenAPI changed: regenerate with -Dopenapi.write=true").isEqualTo(yaml.replace("\r\n", "\n"));
+      assertThat(UiApiContract.check(yaml, Files.readString(path), null, 1, "-Dopenapi.write=true")).isEmpty();
    }
    @Test
    void pivotHttp() throws Exception
@@ -364,7 +372,7 @@ class DataAnalysisApiTest extends EngineFixture
       }
       relationshipCountDrills(call(HttpMethod.POST, "/tables/{table}/crosstab", Map.of("rowField", "status", "columnField", "customer"), 200));
       // All new schemas are discoverable from the same served OpenAPI catalog.
-      assertThat(com.kingsrook.qbits.dataanalysis.api.DataAnalysisApi.extension().getSemanticVersion()).isEqualTo("1.4.0");
+      assertThat(com.kingsrook.qbits.dataanalysis.api.DataAnalysisApi.extension().getSemanticVersion()).isEqualTo("1.5.0");
    }
 
    /*******************************************************************************
