@@ -1,43 +1,408 @@
 bundle: qbit-data-analysis
-version: 1
+version: 0.1.0-SNAPSHOT
 layer: QBIT
-# Help for the Analyses app and every data_analysis_* table, in the QQQ help-bundle
-# format (qqq#1198). Each table entry says what the table is for and how its rows get
-# created, so an empty table explains itself. DataAnalysisHelp applies it until the core
-# HelpBundles registry ships in a QQQ release (STAND-IN(core=QRun-IO/qqq#1198, removeBy=4.1.0-RC.8)).
-# Summaries stay under 120 characters (DataAnalysisTablesGuardrailTest).
 entries:
-  - key: app:dataAnalysis;slot:help
-    summary: "Profile, pivot, compare and watch any table, and tune how analysis behaves per table."
-    content: |
-      The Setup card on the home lists each part, its state and the next step. Analysis works on every analyzable table from the start with built-in limits, so nothing is required. Open Analysis Settings and run Create rows for analyzable tables to see those limits as rows you can edit per table.
+- key: widget:data_analysis_saved_to_data_analysis_saved_star;slot:label
+  summary: "See stars associated with this saved analysis."
+- key: widget:data_analysis_saved_to_data_analysis_schedule;slot:label
+  summary: "Review delivery schedules for this saved analysis."
+- key: widget:data_analysis_saved_to_data_analysis_watch;slot:label
+  summary: "Review watches associated with this saved analysis."
+- key: widget:dataAnalysisHome;slot:label
+  summary: "See an overview of saved analyses, watches and runs you can access."
+- key: widget:dataAnalysisStarred;slot:label
+  summary: "Open saved analyses you have starred."
+- key: widget:dataAnalysisFiring;slot:label
+  summary: "Review watches that are currently firing."
+- key: widget:dataAnalysisRecent;slot:label
+  summary: "Review your recent analysis runs."
+- key: widget:DATA_ANALYSIS_SAVED;slot:label
+  summary: "View the chart produced by a saved analysis."
+- key: app:dataAnalysis;slot:help
+  summary: "Explore your data, revisit saved analyses and monitor changes with watches."
+  content: |
+    Use Analyses to return to saved work, view starred analyses and review watches that are firing. Analyze a table to explore its records, then save the choices you want to revisit. Analysis Settings controls availability and limits for each table. Analysis Runs helps you review exact results and investigate failures.
+- key: table:data_analysis_table_config;slot:help
+  summary: "Control analysis availability, row limits, sampling and result reuse for each table."
+  content: |
+    **How rows get created:** Run **Create rows for analyzable tables** to add the effective settings for tables that do not have a row, or choose New for one table. Existing rows are left unchanged. Without a row, your configured defaults apply.
 
-  - key: table:data_analysis_table_config;slot:help
-    summary: "Per-table analysis limits: on or off, row limits, sampling, smallest group, cache minutes and field lists."
-    content: |
-      **How rows get created:** run the table action Create rows for analyzable tables once. It adds one row per table holding the settings that already apply, so nothing changes until you edit a row. Or add a row with New for just one table. A table without a row uses the defaults from the configuration, so an empty table means every table is on with the defaults. Cache minutes controls how long an exact result is reused (0 turns caching off). Smallest group hides groups with fewer records.
+    Use Analysis Settings to adjust how a table can be analyzed. You can enable analysis, set row and sample limits, choose allowed or excluded fields, and hide groups smaller than a chosen size. Cache Ttl Minutes controls how long completed exact results can be reused. Tables without an entry use the configured defaults.
+- key: table:data_analysis_table_config;field:table_name
+  summary: "The table whose records you want to analyze."
+- key: table:data_analysis_table_config;field:enabled
+  summary: "Whether you can analyze records from this table."
+- key: table:data_analysis_table_config;field:max_rows
+  summary: "The row limit used when analysis reads individual records."
+- key: table:data_analysis_table_config;field:sample_threshold_rows
+  summary: "The row count above which an estimated analysis may use a sample."
+- key: table:data_analysis_table_config;field:sample_rows
+  summary: "The number of rows to include in a sample."
+- key: table:data_analysis_table_config;field:min_group_size
+  summary: "The smallest group of records that may appear in results."
+  content: |
+    Min Group Size prevents very small groups from appearing in analysis results. Choose the minimum number of records a group must contain before it can be shown. If expected categories are missing, review this limit along with your filters before assuming that the underlying records are absent.
+- key: table:data_analysis_table_config;field:analyzable_fields
+  summary: "The fields allowed to be analyzed for this table."
+- key: table:data_analysis_table_config;field:excluded_fields
+  summary: "The fields excluded from analysis for this table."
+- key: table:data_analysis_table_config;field:cache_ttl_minutes
+  summary: "How many minutes completed exact results can be reused; zero turns reuse off."
+- key: table:data_analysis_saved;slot:help
+  summary: "Return to analyses you saved with their table, filters, view and chart choices."
+  content: |
+    **How rows get created:** Save your analysis choices to create a saved analysis. An empty list means you have no saved analyses available to you.
 
-  - key: table:data_analysis_saved;slot:help
-    summary: "Analyses people saved: the table, filter and view they want to come back to."
-    content: |
-      **How rows get created:** a person saves an analysis from the Analyze screen on any table. Each saved analysis belongs to its owner; stars, schedules and watches hang off it. Empty means nobody has saved one yet.
+    Save an analysis from Analyze to keep the table, filters and analysis choices you want to revisit. Each saved analysis has an owner and can be starred for quick access. Open its Schedules and Watches lists to review related deliveries and checks. Sharing the definition does not remove access restrictions on the underlying data.
+- key: table:data_analysis_saved;field:name
+  summary: "The name you use to find this saved analysis."
+- key: table:data_analysis_saved;field:description
+  summary: "A description that helps you understand this entry."
+- key: table:data_analysis_saved;field:table_name
+  summary: "The table whose records you want to analyze."
+- key: table:data_analysis_saved;field:filter_json
+  summary: "The saved record filters, stored as JSON."
+- key: table:data_analysis_saved;field:kind
+  summary: "The type of analysis, such as a profile, pivot or comparison."
+- key: table:data_analysis_saved;field:definition_json
+  summary: "The saved analysis choices, stored as JSON."
+- key: table:data_analysis_saved;field:chart_kind
+  summary: "The chart style used to display the analysis."
+- key: table:data_analysis_saved;field:owner_user_id
+  summary: "The person who owns and manages this analysis or watch."
+- key: table:data_analysis_saved;field:shared
+  summary: "Whether other permitted people can read the saved analysis definition."
+- key: table:data_analysis_saved_star;slot:help
+  summary: "Keep track of the saved analyses you have starred."
+  content: |
+    **How rows get created:** Star a saved analysis to create your personal star. An empty list means you have no stars available here.
 
-  - key: table:data_analysis_saved_star;slot:help
-    summary: "Which saved analyses each person starred."
-    content: |
-      **How rows get created:** a person stars a saved analysis, and the row is theirs. Starred analyses show on the Analyses home. Empty means nothing is starred yet.
+    Star a saved analysis to make it easier to find on the Analyses home. Each star links one person to one saved analysis, so your starred list is personal. These entries are created through the star control. An empty list means you have not starred an analysis available here.
+- key: table:data_analysis_saved_star;field:saved_id
+  summary: "The saved analysis this entry belongs to."
+- key: table:data_analysis_saved_star;field:user_id
+  summary: "The person this entry belongs to."
+- key: table:data_analysis_schedule;slot:help
+  summary: "Run saved analyses at chosen times and deliver their results to selected people."
+  content: |
+    **How rows get created:** Add a schedule to a saved analysis to create a delivery definition. An empty list means you have no schedules available here.
 
-  - key: table:data_analysis_schedule;slot:help
-    summary: "Schedules that run a saved analysis daily, weekly or monthly and send the result."
-    content: |
-      **How rows get created:** a person adds a schedule on a saved analysis (the Schedules list on the saved analysis). Schedules run only when the host configures a scheduler for the qbit. Empty means no analysis is scheduled.
+    Add a schedule to a saved analysis to send results daily, weekly or monthly. Choose the local time, time zone, recipients and output format, then enable it when ready. Automatic runs require scheduling to be configured. Use Send now for an immediate delivery and review Last Status for the outcome.
+- key: table:data_analysis_schedule;field:saved_id
+  summary: "The saved analysis this entry belongs to."
+- key: table:data_analysis_schedule;field:cron
+  summary: "An advanced schedule expression that takes precedence over Frequency, Day and Time."
+  content: |
+    Leave Cron blank when you want to schedule deliveries with Frequency, Day and Time. If you supply an advanced expression, it uses the schedule's Time Zone and replaces those calendar choices. You must use a valid Quartz schedule expression. Check Next Run At after saving to confirm the resulting delivery time.
+- key: table:data_analysis_schedule;field:frequency
+  summary: "Choose daily, weekly or monthly delivery."
+- key: table:data_analysis_schedule;field:day
+  summary: "The weekday number or day of the month used by the schedule."
+  content: |
+    For a weekly schedule, enter a weekday number from 1 for Monday through 7 for Sunday. For a monthly schedule, enter a day from 1 through 31. If that day does not exist in a month, delivery uses the last day of that month. Daily schedules do not need a day.
+- key: table:data_analysis_schedule;field:time
+  summary: "The local time of day when the analysis should run."
+- key: table:data_analysis_schedule;field:time_zone
+  summary: "The time zone used to interpret the scheduled time."
+- key: table:data_analysis_schedule;field:format
+  summary: "Choose an HTML summary, CSV file or Excel workbook for delivery."
+- key: table:data_analysis_schedule;field:recipients
+  summary: "The people receiving the result, listed by user ID in a JSON array."
+  content: |
+    Recipients accepts a list of user IDs, not email addresses. Supply a JSON array containing between one and one hundred nonblank IDs. Duplicate IDs are treated as one recipient. Review the people in the list before you enable the schedule or choose Send now, since those actions deliver the analysis result.
+- key: table:data_analysis_schedule;field:enabled
+  summary: "Whether the schedule is allowed to run automatically."
+- key: table:data_analysis_schedule;field:last_run_at
+  summary: "When the schedule last ran."
+- key: table:data_analysis_schedule;field:last_status
+  summary: "The outcome of the most recent scheduled delivery."
+- key: table:data_analysis_schedule;field:next_run_at
+  summary: "When the schedule is next due to run."
+- key: table:data_analysis_watch;slot:help
+  summary: "Check analysis results for spikes, drops, new categories or other selected conditions."
+  content: |
+    **How rows get created:** Add a watch for a saved analysis or a table and metric. An empty list means you have no watches available here.
 
-  - key: table:data_analysis_watch;slot:help
-    summary: "Watches that alert when a saved analysis spikes, drops, goes out of range or gets a new category."
-    content: |
-      **How rows get created:** a person adds a watch on a saved analysis (the Watches list on the saved analysis). Enabled watches are evaluated every 15 minutes when a scheduler is configured; Evaluate now checks one by hand. A firing watch raises an alert. Empty means nothing is being watched.
+    Create a watch to check a saved analysis or a table and metric you specify. Choose the detector, its parameters, the date field and time grouping. Enabled watches are checked automatically when scheduling is configured, and you can use Evaluate now to check immediately. Review State and Last Message to understand the result.
+- key: table:data_analysis_watch;field:saved_id
+  summary: "The saved analysis this entry belongs to."
+- key: table:data_analysis_watch;field:table_name
+  summary: "The table whose records you want to analyze."
+- key: table:data_analysis_watch;field:filter_json
+  summary: "The saved record filters, stored as JSON."
+- key: table:data_analysis_watch;field:metric_json
+  summary: "The measurement checked by the watch, stored as JSON."
+- key: table:data_analysis_watch;field:detector
+  summary: "The condition to detect, such as a spike, drop or new category."
+- key: table:data_analysis_watch;field:parameters_json
+  summary: "The settings used by the selected detector, stored as JSON."
+- key: table:data_analysis_watch;field:date_field
+  summary: "The date field used to place records into time groups."
+- key: table:data_analysis_watch;field:bucket
+  summary: "The time interval used to group records for the watch."
+- key: table:data_analysis_watch;field:severity
+  summary: "The importance assigned to an alert raised by the watch."
+- key: table:data_analysis_watch;field:owner_user_id
+  summary: "The person who owns and manages this analysis or watch."
+- key: table:data_analysis_watch;field:enabled
+  summary: "Whether the watch is included in automatic checks."
+- key: table:data_analysis_watch;field:last_evaluated_at
+  summary: "When the watch was last checked."
+- key: table:data_analysis_watch;field:last_value
+  summary: "The latest measured value from the watch."
+- key: table:data_analysis_watch;field:last_message
+  summary: "The latest explanation of the watch result."
+- key: table:data_analysis_watch;field:state
+  summary: "Whether the watch is currently OK or firing."
+- key: table:data_analysis_watch;field:alert_key
+  summary: "The identifier used to associate the watch with its alert."
+- key: table:data_analysis_run;slot:help
+  summary: "Review exact analysis runs, their results, timing and any errors."
+  content: |
+    **How rows get created:** Start an exact analysis to record its execution and reusable result. An empty list means you have no recorded runs available here.
 
-  - key: table:data_analysis_run;slot:help
-    summary: "Each exact analysis run: who, what, when and the stored result that is reused as a cache."
-    content: |
-      **How rows get created:** automatically when someone starts an exact analysis. A finished run is reused for the table's cache minutes (Analysis Settings). Empty means nobody has run an exact analysis yet.
+    Analysis Runs records exact analyses as they run. You can review who requested an analysis, its table and operation, the number of rows scanned and its status. Completed results can be reused for the time allowed in Analysis Settings. If a run fails, read Error before trying the analysis again.
+- key: table:data_analysis_run;field:table_name
+  summary: "The table whose records you want to analyze."
+- key: table:data_analysis_run;field:operation
+  summary: "The analysis operation performed by the run."
+- key: table:data_analysis_run;field:request_hash
+  summary: "A fingerprint of the analysis request used to match reusable results."
+- key: table:data_analysis_run;field:filter_hash
+  summary: "A fingerprint of the filters used to match reusable results."
+- key: table:data_analysis_run;field:data_version
+  summary: "The data version associated with the stored result."
+- key: table:data_analysis_run;field:status
+  summary: "Whether the analysis is running, complete or failed."
+- key: table:data_analysis_run;field:started_at
+  summary: "When the analysis run started."
+- key: table:data_analysis_run;field:finished_at
+  summary: "When the analysis run finished."
+- key: table:data_analysis_run;field:rows_scanned
+  summary: "The number of rows examined by the analysis."
+- key: table:data_analysis_run;field:sampled
+  summary: "Whether the result was calculated from a sample of rows."
+- key: table:data_analysis_run;field:result_json
+  summary: "The stored analysis result in JSON form."
+- key: table:data_analysis_run;field:error
+  summary: "The reason the analysis run failed."
+- key: table:data_analysis_run;field:user_id
+  summary: "The person this entry belongs to."
+- key: process:data_analysis_schedule_send;slot:help
+  summary: "Run selected analysis schedules and send their results now."
+  content: |
+    Use Send now on selected Schedules when you need a delivery without waiting for the next scheduled time. Review the schedules before continuing. The action uses each schedule’s saved analysis, recipients and format. Check the result and Last Status afterward to confirm which deliveries completed or failed.
+- key: process:data_analysis_run_schedules;slot:help
+  summary: "Run analysis schedules whose next delivery time is due."
+  content: |
+    Run analysis schedules is the background action that checks for scheduled deliveries. Configure and enable schedules on a saved analysis to use automatic delivery. You can inspect Next Run At, Last Run At and Last Status on Schedules to understand timing and outcomes. Automatic execution requires a configured scheduler.
+- key: process:data_analysis_watch_evaluate;slot:help
+  summary: "Check selected watches now and update their results."
+  content: |
+    Use Evaluate now to check selected Watches without waiting for the next automatic check. Review the selection before continuing. After the action, inspect State, Last Value and Last Message to understand each result. A watch that detects its configured condition can raise an alert with the selected severity.
+- key: process:data_analysis_watch_enable;slot:help
+  summary: "Include selected watches in automatic checks."
+  content: |
+    Use Enable when selected Watches are ready for automatic checking. Review the detector, parameters, date field and time grouping before enabling them. The action checks your access to each watch and reports the outcome. Automatic checks require a configured scheduler; use Evaluate now when you need an immediate result.
+- key: process:data_analysis_watch_disable;slot:help
+  summary: "Exclude selected watches from automatic checks."
+  content: |
+    Use Disable when you want selected Watches to stop participating in automatic checks. Review the selection before continuing and read the result for each watch. The watch definition remains available for inspection and later use. Use Enable when you are ready to include it in automatic checks again.
+- key: process:data_analysis_evaluate_watches;slot:help
+  summary: "Check enabled watches and update their alert conditions."
+  content: |
+    Evaluate watches is the background action that checks enabled Watches. With scheduling configured, it runs every fifteen minutes. You can review Last Evaluated At, State and Last Message to see what happened. Use Evaluate now on a watch when you need to check its condition before the next scheduled run.
+- key: table:data_analysis_table_config;section:identity
+  summary: "The identifying details for this entry."
+- key: table:data_analysis_table_config;section:details
+  summary: "The settings and details associated with this entry."
+- key: table:data_analysis_table_config;section:dates
+  summary: "When this entry was created and last changed."
+- key: table:data_analysis_saved;section:identity
+  summary: "The identifying details for this entry."
+- key: table:data_analysis_saved;section:details
+  summary: "The settings and details associated with this entry."
+- key: table:data_analysis_saved;section:dates
+  summary: "When this entry was created and last changed."
+- key: table:data_analysis_saved_star;section:identity
+  summary: "The identifying details for this entry."
+- key: table:data_analysis_saved_star;section:dates
+  summary: "When this entry was created and last changed."
+- key: table:data_analysis_schedule;section:identity
+  summary: "The identifying details for this entry."
+- key: table:data_analysis_schedule;section:details
+  summary: "The settings and details associated with this entry."
+- key: table:data_analysis_schedule;section:dates
+  summary: "When this entry was created and last changed."
+- key: table:data_analysis_watch;section:identity
+  summary: "The identifying details for this entry."
+- key: table:data_analysis_watch;section:details
+  summary: "The settings and details associated with this entry."
+- key: table:data_analysis_watch;section:dates
+  summary: "When this entry was created and last changed."
+- key: table:data_analysis_run;section:identity
+  summary: "The identifying details for this entry."
+- key: table:data_analysis_run;section:details
+  summary: "The settings and details associated with this entry."
+- key: table:data_analysis_run;section:dates
+  summary: "When this entry was created and last changed."
+- key: table:data_analysis_saved;section:data_analysis_saved_to_data_analysis_saved_star
+  summary: "People who starred this saved analysis."
+- key: table:data_analysis_saved;section:data_analysis_saved_to_data_analysis_schedule
+  summary: "Delivery schedules associated with this saved analysis."
+- key: table:data_analysis_saved;section:data_analysis_saved_to_data_analysis_watch
+  summary: "Watches associated with this saved analysis."
+- key: widget:dataAnalysisSetup;slot:label
+  summary: "Review analysis setup and the next steps available to you."
+- key: process:data_analysis_table_config_create_rows;slot:help
+  summary: "Create editable settings rows for analyzable tables that do not already have one."
+  content: |
+    Use **Create rows for analyzable tables** in Analysis Settings to copy the effective settings into new rows.
+    Review the tables before continuing. Existing settings rows are left unchanged.
+    You need permission to insert settings. Your analysis behavior stays the same until you edit a setting.
+- key: possibleValueSource:data_analysis_kind;slot:help
+  summary: "Choose from the available analysis types."
+  content: |
+    Your available choices are {{values:data_analysis_kind}}.
+- key: possibleValueSource:data_analysis_chart_kind;slot:help
+  summary: "Choose from the available chart styles."
+  content: |
+    Your available choices are {{values:data_analysis_chart_kind}}.
+- key: possibleValueSource:data_analysis_detector;slot:help
+  summary: "Choose from the available watch detectors."
+  content: |
+    Your available choices are {{values:data_analysis_detector}}.
+- key: possibleValueSource:data_analysis_watch_state;slot:help
+  summary: "Choose from the available watch states."
+  content: |
+    Your available choices are {{values:data_analysis_watch_state}}.
+- key: possibleValueSource:data_analysis_watch_bucket;slot:help
+  summary: "Choose from the available time intervals."
+  content: |
+    Your available choices are {{values:data_analysis_watch_bucket}}.
+- key: possibleValueSource:data_analysis_watch_severity;slot:help
+  summary: "Choose from the available alert severities."
+  content: |
+    Your available choices are {{values:data_analysis_watch_severity}}.
+- key: possibleValueSource:data_analysis_run_status;slot:help
+  summary: "Choose from the available run states."
+  content: |
+    Your available choices are {{values:data_analysis_run_status}}.
+- key: possibleValueSource:data_analysis_schedule_frequency;slot:help
+  summary: "Choose from the available delivery frequencies."
+  content: |
+    Your available choices are {{values:data_analysis_schedule_frequency}}.
+- key: possibleValueSource:data_analysis_schedule_format;slot:help
+  summary: "Choose from the available delivery formats."
+  content: |
+    Your available choices are {{values:data_analysis_schedule_format}}.
+- key: possibleValueSource:data_analysis_table_config;slot:help
+  summary: "Select a record from {{label:data_analysis_table_config}}."
+- key: possibleValueSource:data_analysis_saved;slot:help
+  summary: "Select a record from {{label:data_analysis_saved}}."
+- key: possibleValueSource:data_analysis_saved_star;slot:help
+  summary: "Select a record from {{label:data_analysis_saved_star}}."
+- key: possibleValueSource:data_analysis_schedule;slot:help
+  summary: "Select a record from {{label:data_analysis_schedule}}."
+- key: possibleValueSource:data_analysis_watch;slot:help
+  summary: "Select a record from {{label:data_analysis_watch}}."
+- key: possibleValueSource:data_analysis_run;slot:help
+  summary: "Select a record from {{label:data_analysis_run}}."
+- key: possibleValueSource:data_analysis_fields;slot:help
+  summary: "Choose fields from the selected table for your analysis settings."
+- key: process:data_analysis_table_config.bulkInsert;slot:help
+  summary: "Import new records from a file."
+  content: |
+    Use **{{label:data_analysis_table_config.bulkInsert}}** to add records to {{label:data_analysis_table_config}} from a file. Match your file columns to the available fields and review the input before continuing. Check the result for validation errors and records you need to correct.
+- key: process:data_analysis_table_config.bulkEdit;slot:help
+  summary: "Apply changes to multiple selected records."
+  content: |
+    Use **{{label:data_analysis_table_config.bulkEdit}}** to change fields on your selected records in {{label:data_analysis_table_config}}. Review your selection and the values you want to change before continuing. Check the result for records that could not be updated.
+- key: process:data_analysis_table_config.bulkEditWithFile;slot:help
+  summary: "Update existing records using values from a file."
+  content: |
+    Use **{{label:data_analysis_table_config.bulkEditWithFile}}** to update records in {{label:data_analysis_table_config}}. Match your file columns to fields and identify the existing records to update. Review the input before continuing and check the result for errors.
+- key: process:data_analysis_table_config.bulkDelete;slot:help
+  summary: "Delete multiple selected records."
+  content: |
+    Use **{{label:data_analysis_table_config.bulkDelete}}** to remove selected records from {{label:data_analysis_table_config}}. Review your selection carefully before confirming deletion. Check the result for records that could not be deleted.
+- key: process:data_analysis_saved.bulkInsert;slot:help
+  summary: "Import new records from a file."
+  content: |
+    Use **{{label:data_analysis_saved.bulkInsert}}** to add records to {{label:data_analysis_saved}} from a file. Match your file columns to the available fields and review the input before continuing. Check the result for validation errors and records you need to correct.
+- key: process:data_analysis_saved.bulkEdit;slot:help
+  summary: "Apply changes to multiple selected records."
+  content: |
+    Use **{{label:data_analysis_saved.bulkEdit}}** to change fields on your selected records in {{label:data_analysis_saved}}. Review your selection and the values you want to change before continuing. Check the result for records that could not be updated.
+- key: process:data_analysis_saved.bulkEditWithFile;slot:help
+  summary: "Update existing records using values from a file."
+  content: |
+    Use **{{label:data_analysis_saved.bulkEditWithFile}}** to update records in {{label:data_analysis_saved}}. Match your file columns to fields and identify the existing records to update. Review the input before continuing and check the result for errors.
+- key: process:data_analysis_saved.bulkDelete;slot:help
+  summary: "Delete multiple selected records."
+  content: |
+    Use **{{label:data_analysis_saved.bulkDelete}}** to remove selected records from {{label:data_analysis_saved}}. Review your selection carefully before confirming deletion. Check the result for records that could not be deleted.
+- key: process:data_analysis_saved_star.bulkInsert;slot:help
+  summary: "Import new records from a file."
+  content: |
+    Use **{{label:data_analysis_saved_star.bulkInsert}}** to add records to {{label:data_analysis_saved_star}} from a file. Match your file columns to the available fields and review the input before continuing. Check the result for validation errors and records you need to correct.
+- key: process:data_analysis_saved_star.bulkEdit;slot:help
+  summary: "Apply changes to multiple selected records."
+  content: |
+    Use **{{label:data_analysis_saved_star.bulkEdit}}** to change fields on your selected records in {{label:data_analysis_saved_star}}. Review your selection and the values you want to change before continuing. Check the result for records that could not be updated.
+- key: process:data_analysis_saved_star.bulkEditWithFile;slot:help
+  summary: "Update existing records using values from a file."
+  content: |
+    Use **{{label:data_analysis_saved_star.bulkEditWithFile}}** to update records in {{label:data_analysis_saved_star}}. Match your file columns to fields and identify the existing records to update. Review the input before continuing and check the result for errors.
+- key: process:data_analysis_saved_star.bulkDelete;slot:help
+  summary: "Delete multiple selected records."
+  content: |
+    Use **{{label:data_analysis_saved_star.bulkDelete}}** to remove selected records from {{label:data_analysis_saved_star}}. Review your selection carefully before confirming deletion. Check the result for records that could not be deleted.
+- key: process:data_analysis_schedule.bulkInsert;slot:help
+  summary: "Import new records from a file."
+  content: |
+    Use **{{label:data_analysis_schedule.bulkInsert}}** to add records to {{label:data_analysis_schedule}} from a file. Match your file columns to the available fields and review the input before continuing. Check the result for validation errors and records you need to correct.
+- key: process:data_analysis_schedule.bulkEdit;slot:help
+  summary: "Apply changes to multiple selected records."
+  content: |
+    Use **{{label:data_analysis_schedule.bulkEdit}}** to change fields on your selected records in {{label:data_analysis_schedule}}. Review your selection and the values you want to change before continuing. Check the result for records that could not be updated.
+- key: process:data_analysis_schedule.bulkEditWithFile;slot:help
+  summary: "Update existing records using values from a file."
+  content: |
+    Use **{{label:data_analysis_schedule.bulkEditWithFile}}** to update records in {{label:data_analysis_schedule}}. Match your file columns to fields and identify the existing records to update. Review the input before continuing and check the result for errors.
+- key: process:data_analysis_schedule.bulkDelete;slot:help
+  summary: "Delete multiple selected records."
+  content: |
+    Use **{{label:data_analysis_schedule.bulkDelete}}** to remove selected records from {{label:data_analysis_schedule}}. Review your selection carefully before confirming deletion. Check the result for records that could not be deleted.
+- key: process:data_analysis_watch.bulkInsert;slot:help
+  summary: "Import new records from a file."
+  content: |
+    Use **{{label:data_analysis_watch.bulkInsert}}** to add records to {{label:data_analysis_watch}} from a file. Match your file columns to the available fields and review the input before continuing. Check the result for validation errors and records you need to correct.
+- key: process:data_analysis_watch.bulkEdit;slot:help
+  summary: "Apply changes to multiple selected records."
+  content: |
+    Use **{{label:data_analysis_watch.bulkEdit}}** to change fields on your selected records in {{label:data_analysis_watch}}. Review your selection and the values you want to change before continuing. Check the result for records that could not be updated.
+- key: process:data_analysis_watch.bulkEditWithFile;slot:help
+  summary: "Update existing records using values from a file."
+  content: |
+    Use **{{label:data_analysis_watch.bulkEditWithFile}}** to update records in {{label:data_analysis_watch}}. Match your file columns to fields and identify the existing records to update. Review the input before continuing and check the result for errors.
+- key: process:data_analysis_watch.bulkDelete;slot:help
+  summary: "Delete multiple selected records."
+  content: |
+    Use **{{label:data_analysis_watch.bulkDelete}}** to remove selected records from {{label:data_analysis_watch}}. Review your selection carefully before confirming deletion. Check the result for records that could not be deleted.
+- key: process:data_analysis_run.bulkInsert;slot:help
+  summary: "Import new records from a file."
+  content: |
+    Use **{{label:data_analysis_run.bulkInsert}}** to add records to {{label:data_analysis_run}} from a file. Match your file columns to the available fields and review the input before continuing. Check the result for validation errors and records you need to correct.
+- key: process:data_analysis_run.bulkEdit;slot:help
+  summary: "Apply changes to multiple selected records."
+  content: |
+    Use **{{label:data_analysis_run.bulkEdit}}** to change fields on your selected records in {{label:data_analysis_run}}. Review your selection and the values you want to change before continuing. Check the result for records that could not be updated.
+- key: process:data_analysis_run.bulkEditWithFile;slot:help
+  summary: "Update existing records using values from a file."
+  content: |
+    Use **{{label:data_analysis_run.bulkEditWithFile}}** to update records in {{label:data_analysis_run}}. Match your file columns to fields and identify the existing records to update. Review the input before continuing and check the result for errors.
+- key: process:data_analysis_run.bulkDelete;slot:help
+  summary: "Delete multiple selected records."
+  content: |
+    Use **{{label:data_analysis_run.bulkDelete}}** to remove selected records from {{label:data_analysis_run}}. Review your selection carefully before confirming deletion. Check the result for records that could not be deleted.

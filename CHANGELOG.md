@@ -6,6 +6,8 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 
 ### Added
 
+- Complete host-neutral in-app help bundle with live metadata references and a core help coverage gate.
+
 - Analysis Settings table action **Create rows for analyzable tables**: writes the effective settings as editable `data_analysis_table_config` rows (insert-only, no change in behavior).
 - Setup card on the Analyses home (settings, result cache, saved analyses, watches, schedules).
 - Help bundle `help/qbit-data-analysis.yaml`: every table says what it is for and how its rows get created.
@@ -40,12 +42,13 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 
 ### Changed
 
+- Pin QQQ 4.1.0-RC.7 and replace the temporary help loader with core bundle registration and startup sync.
+
 - Boolean pivot/crosstab headers now say Yes / No / (Blank). Pivot measures use human labels such as Count, Average Amount, Sum of Amount, Distinct Email, Median Amount and 90th percentile of Amount.
 - Watch DDL includes owner/date fields and last value/message; existing databases need an owner/date backfill before enabling watches.
 
 - Scalable estimates sample each native aggregate without primary-key IN lists, scale counts using observed sample sizes, retain exact population totals and unscaled ratios, and drill over the full population. Portable estimates use one primary-key boundary and report unscaled prefix counts.
 
-- Target QQQ 4.1.0-RC.6; local verification uses `-Dqqq.snapshot.version=4.1.0-DATAANALYSIS-SNAPSHOT`.
 - Empty-string and temporal drills round-trip through core HTTP filter interpretation.
 
 ### Previously added

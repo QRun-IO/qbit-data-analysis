@@ -107,8 +107,11 @@ class FieldAnalysisAccessTest extends EngineFixture
       var fallback = new FieldSecurityLockFieldAccessResolver();
       assertThat(fallback.resolve(table, table.getField("amount"))).isEqualTo(FieldAnalysisAccess.FULL);
       assertThat(fallback.resolve(table, table.getField("secret"))).isEqualTo(FieldAnalysisAccess.NONE);
-      // The snapshot has no tier package. Test the actual default selection.
-      assertThat(CoreTierFieldAccessResolver.defaultResolver()).isInstanceOf(FieldSecurityLockFieldAccessResolver.class);
+      // RC.7 supplies the core tier API; verify discovery and effective access.
+      var defaultResolver = CoreTierFieldAccessResolver.defaultResolver();
+      assertThat(defaultResolver).isInstanceOf(CoreTierFieldAccessResolver.class);
+      assertThat(defaultResolver.resolve(table, table.getField("amount"))).isEqualTo(FieldAnalysisAccess.FULL);
+      assertThat(defaultResolver.resolve(table, table.getField("secret"))).isEqualTo(FieldAnalysisAccess.NONE);
       var resolver = new CoreTierFieldAccessResolver(TierApi.class);
       try
       {

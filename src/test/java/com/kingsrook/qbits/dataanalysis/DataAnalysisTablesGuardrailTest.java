@@ -30,12 +30,14 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
-import com.kingsrook.qbits.dataanalysis.help.DataAnalysisHelp;
+import com.kingsrook.qqq.backend.core.model.metadata.help.bundles.HelpBundles;
+import com.kingsrook.qqq.backend.core.testing.HelpBundleAssertions;
 import com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables;
 import com.kingsrook.qbits.dataanalysis.processes.TableConfigDefaultsProcess;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.actions.help.HelpTargetCatalog;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
-import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.help.bundles.HelpBundleEntry;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -144,7 +146,7 @@ class DataAnalysisTablesGuardrailTest
       ///////////////////////////////////////////////////////////////////////////////
       assertThat(instance.getProcess(TableConfigDefaultsProcess.NAME).getTableName()).isEqualTo(DataAnalysisTables.TABLE_CONFIG);
       assertThat(instance.getProcess(TableConfigDefaultsProcess.NAME).getMinInputRecords()).isEqualTo(0);
-      assertThat(help(DataAnalysisTables.TABLE_CONFIG).getFirst().getContent()).contains(instance.getProcess(TableConfigDefaultsProcess.NAME).getLabel());
+      assertThat(help(DataAnalysisTables.TABLE_CONFIG).getContent()).contains(instance.getProcess(TableConfigDefaultsProcess.NAME).getLabel());
    }
 
 
@@ -155,39 +157,50 @@ class DataAnalysisTablesGuardrailTest
    @Test
    void everyTableHasEmptyStateHelp() throws Exception
    {
-      assertThat(DataAnalysisHelp.entries()).allSatisfy((key, entry) -> assertThat(entry.path("summary").asText().length()).as(key).isLessThanOrEqualTo(120));
+      HelpBundleAssertions.forInstance(instance).bundles("help/qbit-data-analysis.yaml")
+         .owning(target -> target.name().startsWith("data_analysis_") || target.name().startsWith("dataAnalysis") || target.name().equals("DATA_ANALYSIS_SAVED"))
+         .assertComplete();
       for(String table : analysisTables())
       {
-         List<QHelpContent> help = help(table);
-         assertThat(help).as(table + " table help").isNotEmpty();
-         assertThat(help.getFirst().getContent()).as(table + " help says how rows get created").contains("How rows get created");
+         assertThat(help(table).getContent()).as(table + " help says how rows get created").contains("How rows get created");
       }
-      assertThat(instance.getApp("dataAnalysis").getHelpContent()).containsKey(DataAnalysisHelp.SLOT);
-      assertThat(DataAnalysisHelp.entries().keySet()).allMatch(key -> !key.startsWith("table:") || instance.getTable(key.substring(6, key.indexOf(';'))) != null,
-         "help names only real tables");
+      // RC.7's core gate requires apps, tables, processes and fields; also cover our widgets and value sources.
+      List<String> keys = HelpBundles.of(instance).getBundles().getFirst().getEntries().stream().map(HelpBundleEntry::getKey).toList();
+      HelpTargetCatalog.collect(instance).stream()
+         .filter(target -> List.of("widget", "possibleValueSource").contains(target.kind()))
+         .filter(target -> target.name().startsWith("data_analysis_") || target.name().startsWith("dataAnalysis") || target.name().equals("DATA_ANALYSIS_SAVED"))
+         .forEach(target -> assertThat(keys).contains(target.key()));
+      assertThat(keys).doesNotHaveDuplicates();
+      assertThat(instance.getTable("helpContent")).isNull();
+      HelpBundles.syncOnStartup(instance);
+      assertThat(HelpBundles.of(instance).getBundles()).hasSize(1);
    }
 
 
 
    /*******************************************************************************
-    ** A host's own help on a table is kept.
+    ** Host bundles override the qbit without replacing its resource.
     *******************************************************************************/
    @Test
-   void hostHelpIsNotOverridden() throws Exception
+   void hostBundleOverridesQbit()
    {
-      instance.getTable(DataAnalysisTables.SAVED).getHelpContent().put(DataAnalysisHelp.SLOT, List.of(new QHelpContent().withContentAsMarkdown("host text")));
-      DataAnalysisHelp.apply(instance, new DataAnalysisQBitConfig());
-      assertThat(help(DataAnalysisTables.SAVED).getFirst().getContent()).isEqualTo("host text");
+      HelpBundles.register(instance, "help/host-override.yaml");
+      var winner = HelpBundles.of(instance).resolveWinningEntries()
+         .get(new HelpBundles.EntryKey("table:data_analysis_saved;slot:help", "ALL_SCREENS"));
+      assertThat(winner.bundle().getId()).isEqualTo("test-host");
+      assertThat(winner.entry().getSummary()).isEqualTo("Your host's saved analysis guidance.");
+      assertThat(help(DataAnalysisTables.SAVED).getContent()).contains("How rows get created");
    }
 
 
 
    /*******************************************************************************
-    **
+    ** Read the registered bundle without requiring host help storage.
     *******************************************************************************/
-   private List<QHelpContent> help(String table)
+   private HelpBundleEntry help(String table)
    {
-      return (instance.getTable(table).getHelpContent() == null ? null : instance.getTable(table).getHelpContent().get(DataAnalysisHelp.SLOT));
+      return (HelpBundles.of(instance).getBundles().getFirst().getEntries().stream()
+         .filter(entry -> entry.getKey().equals("table:" + table + ";slot:help")).findFirst().orElseThrow());
    }
 
 
