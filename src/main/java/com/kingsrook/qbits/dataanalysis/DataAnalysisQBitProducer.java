@@ -21,6 +21,9 @@
 package com.kingsrook.qbits.dataanalysis;
 
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
 import com.kingsrook.qbits.dataanalysis.api.DataAnalysisApi;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
@@ -40,10 +43,38 @@ public class DataAnalysisQBitProducer implements QBitMetaDataProducer<DataAnalys
 {
    public static final String GROUP_ID = "com.kingsrook.qbits";
    public static final String ARTIFACT_ID = "qbit-data-analysis";
-   public static final String VERSION = "0.1.0";
+   public static final String VERSION = loadVersion();
 
    private DataAnalysisQBitConfig qBitConfig;
    private String namespace;
+
+
+
+   /*******************************************************************************
+    ** Read the artifact version from the Maven-filtered properties resource.
+    *******************************************************************************/
+   private static String loadVersion()
+   {
+      try(InputStream inputStream = DataAnalysisQBitProducer.class.getClassLoader().getResourceAsStream("qbit-data-analysis.properties"))
+      {
+         if(inputStream == null)
+         {
+            throw (new IllegalStateException("Missing qbit-data-analysis.properties; build with Maven to generate the artifact version"));
+         }
+         Properties properties = new Properties();
+         properties.load(inputStream);
+         String version = properties.getProperty("version");
+         if(version == null || version.isBlank() || version.contains("${"))
+         {
+            throw (new IllegalStateException("Missing or unfiltered version in qbit-data-analysis.properties; build with Maven resource filtering"));
+         }
+         return (version);
+      }
+      catch(IOException e)
+      {
+         throw (new IllegalStateException("Could not read artifact version from qbit-data-analysis.properties", e));
+      }
+   }
 
 
 

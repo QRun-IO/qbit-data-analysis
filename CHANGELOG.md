@@ -4,6 +4,10 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 
 ## [Unreleased]
 
+### Fixed
+
+- QBit metadata now reports the Maven artifact version, including release versions, from a filtered build resource.
+
 ### Added
 
 - Complete host-neutral in-app help bundle with live metadata references and a core help coverage gate.
