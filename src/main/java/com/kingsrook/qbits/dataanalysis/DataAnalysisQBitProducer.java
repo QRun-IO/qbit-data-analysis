@@ -25,6 +25,7 @@ import com.kingsrook.qbits.dataanalysis.api.DataAnalysisApi;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.help.bundles.HelpBundles;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.TableFeaturePermission;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.TableFeaturePermissionsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
@@ -171,7 +172,11 @@ public class DataAnalysisQBitProducer implements QBitMetaDataProducer<DataAnalys
       {
          instance.getApp(qBitConfig.getParentAppName()).withChild(instance.getApp(qBitConfig.getAppName()));
       }
-      com.kingsrook.qbits.dataanalysis.help.DataAnalysisHelp.apply(instance, qBitConfig);
+      // Registration is metadata-only; core startup sync guards hosts without helpContent.
+      HelpBundles.register(instance, "help/qbit-data-analysis.yaml");
+      HelpBundles.of(instance).getBundles().getLast().getEntries().stream()
+         .filter(entry -> "app:dataAnalysis;slot:help".equals(entry.getKey()))
+         .forEach(entry -> entry.setKey("app:" + qBitConfig.getAppName() + ";slot:help"));
       return (new MetaDataProducerMultiOutput());
    }
 }

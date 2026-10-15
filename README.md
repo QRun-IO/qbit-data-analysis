@@ -10,7 +10,7 @@ Twenty-one HTTP operations are available under `/qqq/v1/qbit/data-analysis` (ext
 
 ## Requirements
 
-- Java 21; QQQ **4.1.0-RC.6+**.
+- Java 21; QQQ **4.1.0-RC.7+**.
 - A configured QQQ backend for the qbit tables and authenticated sessions with permissions and security keys.
 - Core aggregate and table-feature permission APIs ([qqq#1139](https://github.com/QRun-IO/qqq/pull/1139)) and the UI API extension point ([qqq#1128](https://github.com/QRun-IO/qqq/pull/1128)). Middleware Javalin remains optional; the producer registers endpoints only when it is present.
 
@@ -187,7 +187,7 @@ Requests and drills reuse core's `QueryFilter` JSON shape and schema reference. 
 Regenerate deliberately after an API change:
 
 ```bash
-./mvnw -o -q test -Dtest=DataAnalysisApiTest#contract -Dopenapi.write=true -Dqqq.snapshot.version=4.1.0-DATAANALYSIS-SNAPSHOT
+./mvnw -q test -Dtest=DataAnalysisApiTest#contract -Dopenapi.write=true
 ```
 
 ## Pivot backend and field access
@@ -202,7 +202,7 @@ The planner first requests count-ordered top-N groups for every dimension (defau
 
 Hosts can supply `withFieldAnalysisAccessResolver(() -> resolver)`. FULL fields alone appear in capabilities and may be selected. EXACT_MATCH_ONLY and NONE get the same 400 as an unknown field; user-authored filters are passed through for core enforcement. Generated drills using a restricted field (including representative primary keys) are disabled. Related PVS display labels also require FULL access. Exact-run cache identities hash the sorted FULL-field list, the optional core access fingerprint, and related label access.
 
-The default resolver discovers the optional core `fieldaccess.FieldAccessHelper` class and its static methods once. FULL maps to FULL, REVEALABLE to EXACT_MATCH_ONLY, MASKED/HIDDEN to NONE. Without that class, legacy field locks supply FULL/NONE. Replace the reflective calls when the core package ships. Reflection tests use a local stand-in helper rather than shadowing a future real core class at its FQN; the installed snapshot exercises the actual fallback selection. Exact-run persistence continues to support profiles only; pivot results are synchronous.
+The default resolver discovers the optional core `fieldaccess.FieldAccessHelper` class and its static methods once. FULL maps to FULL, REVEALABLE to EXACT_MATCH_ONLY, MASKED/HIDDEN to NONE. Without that class, legacy field locks supply FULL/NONE. Replace the reflective calls when the core package ships. Reflection tests use a local stand-in helper rather than shadowing a future real core class at its FQN; the pinned RC.7 exercises the actual core tier resolver selection. Exact-run persistence continues to support profiles only; pivot results are synchronous.
 
 ## Backend selection
 
@@ -304,13 +304,26 @@ The Analyses home uses standard `multiStatistics` and `table` widgets: mine/shar
 
 Backend phases **b–f** are implemented, including saved/shared/starred analyses, schedules, standard widgets, home, export and SQL handoff. The separate profile, pivot and relationship frontend remains outside this repository.
 
+## In-app help
+
+The qbit registers `src/main/resources/help/qbit-data-analysis.yaml` as a QBIT bundle.
+Hosts with the core `helpContent` table receive it through QQQ's startup sync; registration
+is harmless without that table. The app help follows `appName` when you configure a custom name.
+To override text, register your own `layer: HOST` bundle with the same entry key and role
+(using your configured app name for app help). HOST entries take precedence over QBIT entries;
+QQQ preserves manually edited help during sync.
+
+`DataAnalysisTablesGuardrailTest` uses `HelpBundleAssertions` to check owned metadata,
+summary length and live references, and checks widget and possible-value-source coverage.
+Update the bundle's literal version alongside the POM version when releasing.
+
 ## Build
 
 ```bash
-./mvnw -o -q verify -Dqqq.snapshot.version=4.1.0-DATAANALYSIS-SNAPSHOT
+./mvnw -q verify
 ```
 
-The wrapper pins Maven 3.9.11. On Windows use `mvnw.cmd`. Verification runs Checkstyle, a shared JUnit 5/AssertJ contract suite on memory and H2, PostgreSQL via Testcontainers when Docker is available, and JaCoCo gates of 70% instructions and 90% classes. The suite checks numerical references, every exact count/drill pair, full-population estimate drills, security, guarded cache JSON, native sampling, asynchronous jobs and cache invalidation. The POM targets RC.6; until its release, always supply the locally installed snapshot override shown above. RDBMS, H2, Testcontainers PostgreSQL and the PostgreSQL driver are test-scoped; middleware Javalin is optional.
+The wrapper pins Maven 3.9.11. On Windows use `mvnw.cmd`. Verification runs Checkstyle, a shared JUnit 5/AssertJ contract suite on memory and H2, PostgreSQL via Testcontainers when Docker is available, and JaCoCo gates of 70% instructions and 90% classes. The suite checks numerical references, every exact count/drill pair, full-population estimate drills, security, guarded cache JSON, native sampling, asynchronous jobs and cache invalidation. The POM pins QQQ 4.1.0-RC.7 from Maven Central. RDBMS, H2, Testcontainers PostgreSQL and the PostgreSQL driver are test-scoped; middleware Javalin is optional.
 
 ## License
 

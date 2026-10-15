@@ -1,0 +1,7 @@
+bundle: test-host
+version: 1
+layer: HOST
+entries:
+- key: table:data_analysis_saved;slot:help
+  summary: "Your host's saved analysis guidance."
+  content: "Use your host's saved analysis workflow."

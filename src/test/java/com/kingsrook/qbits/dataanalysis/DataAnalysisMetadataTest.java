@@ -32,6 +32,7 @@ import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.help.bundles.HelpBundles;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitConfigValidationException;
@@ -120,6 +121,8 @@ class DataAnalysisMetadataTest
       assertThat(producer.getQBitMetaData().getArtifactId()).isEqualTo("qbit-data-analysis");
       assertThat(producer.getPackageNameForFindingMetaDataProducers()).endsWith(".metadata");
       producer.produce(instance);
+      assertThat(HelpBundles.of(instance).getBundles().getFirst().getEntries()).anyMatch(entry -> entry.getKey().equals("app:customAnalysis;slot:help"))
+         .noneMatch(entry -> entry.getKey().equals("app:dataAnalysis;slot:help"));
       assertThat(instance.getApp("customAnalysis").getParentAppName()).isEqualTo("admin");
       assertThat(instance.getApp("admin").getChildren()).contains(instance.getApp("customAnalysis"));
       assertThat(new DataAnalysisQBitProducer().isEnabled()).isFalse();
