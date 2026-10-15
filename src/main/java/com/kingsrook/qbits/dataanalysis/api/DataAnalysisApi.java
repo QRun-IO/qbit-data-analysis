@@ -76,7 +76,7 @@ public class DataAnalysisApi
     *******************************************************************************/
    public static MiddlewareSpecExtension extension()
    {
-      return (new MiddlewareSpecExtension().withName("data-analysis").withSemanticVersion("1.4.0")
+      return (new MiddlewareSpecExtension().withName("data-analysis").withSemanticVersion("1.5.0")
          .withDescription("Profiles, pivots, comparisons, distribution shifts, correlations, scatter samples, crosstabs and anomaly watch previews as the signed-in user.")
          .withSpec(SavedApi.Run.class).withSpec(SavedApi.ListSaved.class).withSpec(SavedApi.Star.class).withSpec(SavedApi.Unstar.class)
          .withSpec(SavedApi.Sql.class).withSpec(AnalysisFileSpec.class).withSpec(AnalysisFileSpec.Saved.class)

@@ -116,11 +116,15 @@ class DataAnalysisMetadataTest
       assertThat(producer.isEnabled()).isTrue();
       assertThat(producer.getNamespace()).isEqualTo("analysis");
       assertThat(producer.getQBitConfig()).isSameAs(config);
-      assertThat(producer.getQBitMetaData().getVersion()).isEqualTo("0.1.0");
+      String artifactVersion = System.getProperty("qbit.artifactVersion");
+      assertThat(artifactVersion).isNotBlank();
+      assertThat(producer.getQBitMetaData().getVersion()).isEqualTo(artifactVersion).isEqualTo(DataAnalysisQBitProducer.VERSION);
       assertThat(producer.getQBitMetaData().getGroupId()).isEqualTo("com.kingsrook.qbits");
       assertThat(producer.getQBitMetaData().getArtifactId()).isEqualTo("qbit-data-analysis");
       assertThat(producer.getPackageNameForFindingMetaDataProducers()).endsWith(".metadata");
       producer.produce(instance);
+      assertThat(HelpBundles.of(instance).getBundles().getFirst().getVersion())
+         .isEqualTo(artifactVersion).isEqualTo(producer.getQBitMetaData().getVersion());
       assertThat(HelpBundles.of(instance).getBundles().getFirst().getEntries()).anyMatch(entry -> entry.getKey().equals("app:customAnalysis;slot:help"))
          .noneMatch(entry -> entry.getKey().equals("app:dataAnalysis;slot:help"));
       assertThat(instance.getApp("customAnalysis").getParentAppName()).isEqualTo("admin");

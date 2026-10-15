@@ -4,6 +4,10 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 
 ## [Unreleased]
 
+### Fixed
+
+- QBit metadata now reports the Maven artifact version, including release versions, from a filtered build resource.
+
 ### Added
 
 - Complete host-neutral in-app help bundle with live metadata references and a core help coverage gate.
@@ -41,6 +45,8 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 - HTTP authorization, drill-to-core-count round trips, async polling, served OpenAPI and assistant discovery tests; H2 streamed and native-compatibility contract variants.
 
 ### Changed
+
+- UI API extension data-analysis 1.5.0 (requires QQQ 4.1.0-RC.15, UI API 1.6.0): operationIds, standard error responses with BasicErrorResponseV1, extension tags, contract validation for operationIds and schema references, and HTTP error envelope regression assertions.
 
 - Pin QQQ 4.1.0-RC.7 and replace the temporary help loader with core bundle registration and startup sync.
 
