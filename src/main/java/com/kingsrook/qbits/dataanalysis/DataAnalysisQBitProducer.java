@@ -23,8 +23,10 @@ package com.kingsrook.qbits.dataanalysis;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
 import java.util.Properties;
 import com.kingsrook.qbits.dataanalysis.api.DataAnalysisApi;
+import com.kingsrook.qbits.dataanalysis.app.DataAnalysisHome;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -44,6 +46,13 @@ public class DataAnalysisQBitProducer implements QBitMetaDataProducer<DataAnalys
    public static final String GROUP_ID = "com.kingsrook.qbits";
    public static final String ARTIFACT_ID = "qbit-data-analysis";
    public static final String VERSION = loadVersion();
+
+   /////////////////////////////////////////////////////////////////////////////////
+   // Widgets that show engine configuration. They are registered with the qbit   //
+   // (admin-only, hidden from everyone else) but kept off the business home; the //
+   // host places them on its Admin area, e.g. withWidgets(SYSTEM_WIDGETS).       //
+   /////////////////////////////////////////////////////////////////////////////////
+   public static final List<String> SYSTEM_WIDGETS = List.of(DataAnalysisHome.SETUP);
 
    private DataAnalysisQBitConfig qBitConfig;
    private String namespace;

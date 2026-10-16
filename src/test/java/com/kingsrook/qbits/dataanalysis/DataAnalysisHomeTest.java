@@ -25,6 +25,9 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import com.kingsrook.qbits.dataanalysis.app.DataAnalysisHome;
 import com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables;
+import com.kingsrook.qbits.dataanalysis.permissions.DataAnalysisPermissions;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
 import com.kingsrook.qqq.backend.core.model.dashboard.widgets.MultiStatisticsData;
@@ -69,12 +72,43 @@ class DataAnalysisHomeTest
          }
       }
       QContext.init(instance, TestSupport.user("alice"));
-      assertThat(DataAnalysisHome.statistics(Instant.now()).getStatisticsGroupData()).allSatisfy(g ->
+      assertThat(DataAnalysisHome.statistics(Instant.now()).getStatisticsGroupData()).isEmpty();
+      assertThat(((TableData) DataAnalysisHome.render(DataAnalysisHome.FIRING, Instant.now())).getNoRowsFoundHTML()).doesNotContain("Unavailable");
+   }
+
+   @Test
+   void setupIsOffTheBusinessHomeAndAdminOnly() throws Exception
+   {
+      var instance = TestSupport.instance();
+      assertThat(DataAnalysisHome.homeWidgetNames()).doesNotContain(DataAnalysisHome.SETUP).containsExactly(DataAnalysisHome.HOME_WIDGET,
+         DataAnalysisHome.STARRED, DataAnalysisHome.FIRING, DataAnalysisHome.RECENT);
+      assertThat(instance.getApp("dataAnalysis").getWidgets()).doesNotContain(DataAnalysisHome.SETUP);
+      assertThat(DataAnalysisQBitProducer.SYSTEM_WIDGETS).containsExactly(DataAnalysisHome.SETUP);
+      assertThat(instance.getWidgets()).containsKey(DataAnalysisHome.SETUP);
+
+      QContext.init(instance, TestSupport.admin());
+      assertThat(PermissionsHelper.hasWidgetPermission(new AbstractActionInput(), DataAnalysisHome.SETUP)).isTrue();
+      assertThat(DataAnalysisHome.setup().getRows()).hasSize(5);
+      assertThat(new DataAnalysisHome().render(new RenderWidgetInput().withWidgetMetaData(instance.getWidget(DataAnalysisHome.SETUP))).getWidgetData()).isInstanceOf(TableData.class);
+
+      QContext.init(instance, TestSupport.user("alice").withPermissions(DataAnalysisPermissions.SAVED_READ));
+      assertThat(PermissionsHelper.hasWidgetPermission(new AbstractActionInput(), DataAnalysisHome.SETUP)).isFalse();
+   }
+
+   @Test
+   void savedReadOnlyUserGetsNoLockedShells() throws Exception
+   {
+      var instance = TestSupport.instance();
+      QContext.init(instance, TestSupport.user("alice").withPermissions(DataAnalysisPermissions.SAVED_READ));
+      List<String> visible = DataAnalysisHome.homeWidgetNames().stream().filter(name -> PermissionsHelper.hasWidgetPermission(new AbstractActionInput(), name)).toList();
+      assertThat(visible).containsExactly(DataAnalysisHome.HOME_WIDGET, DataAnalysisHome.STARRED);
+      for(String name : visible)
       {
-         assertThat(g.getStatisticList()).isEmpty();
-         assertThat(g.getSubheader()).contains("Unavailable");
-      });
-      assertThat(((TableData) DataAnalysisHome.render(DataAnalysisHome.FIRING, Instant.now())).getNoRowsFoundHTML()).contains("Unavailable");
+         var data = DataAnalysisHome.render(name, Instant.now());
+         assertThat(com.kingsrook.qqq.backend.core.utils.JsonUtils.toJson(data)).doesNotContain("Unavailable").doesNotContain("permission required");
+      }
+      var groups = DataAnalysisHome.statistics(Instant.now()).getStatisticsGroupData();
+      assertThat(groups).extracting(g -> g.getHeader()).containsExactly("Saved analyses");
    }
 
    @Test
