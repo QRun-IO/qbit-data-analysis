@@ -7,6 +7,7 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 ### Fixed
 
 - QBit metadata now reports the Maven artifact version, including release versions, from a filtered build resource.
+- The Data Analysis home no longer shows the engine Setup card or "Unavailable: READ permission required." shells. Setup is admin-only (hidden from everyone else) and off the home; hosts place `DataAnalysisQBitProducer.SYSTEM_WIDGETS` on their Admin area. Home widgets the user cannot read are omitted from metadata, and unreadable groups are left out of the overview.
 
 ### Added
 

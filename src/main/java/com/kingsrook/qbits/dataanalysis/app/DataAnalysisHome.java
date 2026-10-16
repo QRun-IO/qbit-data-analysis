@@ -28,14 +28,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import com.kingsrook.qbits.dataanalysis.DataAnalysisQBitConfig;
+import com.kingsrook.qbits.dataanalysis.DataAnalysisQBitProducer;
 import com.kingsrook.qbits.dataanalysis.DataAnalysisRuntime;
 import com.kingsrook.qbits.dataanalysis.engine.DrillFilters;
 import com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables;
+import com.kingsrook.qbits.dataanalysis.permissions.DataAnalysisPermissions;
 import com.kingsrook.qbits.dataanalysis.saved.SavedAnalyses;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.AbstractWidgetRenderer;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.UseOtherPermissionNameCustomPermissionChecker;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -54,6 +57,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
@@ -82,7 +86,39 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
     *******************************************************************************/
    public static List<QWidgetMetaData> widgets()
    {
-      return (List.of(widget(SETUP, "Setup", WidgetType.TABLE), widget(), widget(STARRED, "Starred analyses", WidgetType.TABLE), widget(FIRING, "Firing watches", WidgetType.TABLE), widget(RECENT, "My recent runs", WidgetType.TABLE)));
+      return (List.of(setupWidget(), widget().withPermissionRules(readRules(DataAnalysisTables.SAVED)),
+         widget(STARRED, "Starred analyses", WidgetType.TABLE).withPermissionRules(readRules(DataAnalysisTables.SAVED)),
+         widget(FIRING, "Firing watches", WidgetType.TABLE).withPermissionRules(readRules(DataAnalysisTables.WATCH)),
+         widget(RECENT, "My recent runs", WidgetType.TABLE).withPermissionRules(readRules(DataAnalysisTables.RUN))));
+   }
+
+   /*******************************************************************************
+    ** Names of the widgets placed on the business home. Setup is system content and
+    ** is deliberately absent; hosts place {@link DataAnalysisQBitProducer#SYSTEM_WIDGETS}
+    ** on their Admin area instead.
+    *******************************************************************************/
+   public static List<String> homeWidgetNames()
+   {
+      return (widgets().stream().map(QWidgetMetaData::getName).filter(name -> !DataAnalysisQBitProducer.SYSTEM_WIDGETS.contains(name)).toList());
+   }
+
+   /*******************************************************************************
+    ** The Setup card shows engine configuration, so only Data Analysis admins get it;
+    ** everyone else has it omitted from metadata.
+    *******************************************************************************/
+   private static QWidgetMetaData setupWidget()
+   {
+      return (widget(SETUP, "Setup", WidgetType.TABLE).withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION)
+         .withDenyBehavior(DenyBehavior.HIDDEN).withCustomPermissionChecker(UseOtherPermissionNameCustomPermissionChecker.build(DataAnalysisPermissions.ADMIN))));
+   }
+
+   /*******************************************************************************
+    ** A data widget is omitted from metadata for users who cannot read its table.
+    *******************************************************************************/
+   private static QPermissionRules readRules(String table)
+   {
+      return (new QPermissionRules().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION).withDenyBehavior(DenyBehavior.HIDDEN)
+         .withCustomPermissionChecker(TableReadWidgetPermissionChecker.build(table)));
    }
 
    /*******************************************************************************
@@ -101,7 +137,7 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
    public static QAppMetaData app(DataAnalysisQBitConfig config, List<QTableMetaData> tables)
    {
       QAppMetaData app = new QAppMetaData().withName(config.getAppName()).withLabel(config.getAppLabel())
-         .withIcon(new QIcon("insights")).withWidgets(widgets().stream().map(QWidgetMetaData::getName).toList())
+         .withIcon(new QIcon("insights")).withWidgets(homeWidgetNames())
          .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED))
          .withSection(new QAppSection().withName("analyses").withLabel("Analyses").withIcon(new QIcon("insights")).withTables(DataAnalysisTables.NAV_TABLES));
       app.setParentAppName(config.getParentAppName());
@@ -197,46 +233,45 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
    }
 
    /*******************************************************************************
-    ** One standard group per subject, with real counts or an unavailable explanation.
+    ** One standard group per subject the viewer can read; unreadable subjects are left out.
     *******************************************************************************/
    public static MultiStatisticsData statistics(Instant now) throws QException
    {
       List<MultiStatisticsData.StatisticsGroupData> groups = new ArrayList<>();
-      var saved = group("Saved analyses", DataAnalysisTables.SAVED);
       if(canRead(DataAnalysisTables.SAVED))
       {
+         var saved = group("Saved analyses");
          List<SavedAnalyses.Entry> entries = DataAnalysisRuntime.saved().list();
          String user = SavedAnalyses.user();
          saved.withStatisticList(List.of(stat("Mine", (int) entries.stream().filter(e -> e.owner().equals(user)).count(), DataAnalysisTables.SAVED),
             stat("Shared", (int) entries.stream().filter(e -> Boolean.TRUE.equals(e.shared())).count(), DataAnalysisTables.SAVED),
             stat("Starred", (int) entries.stream().filter(SavedAnalyses.Entry::starred).count(), DataAnalysisTables.SAVED)));
+         groups.add(saved);
       }
-      groups.add(saved);
-      var watches = group("Watches", DataAnalysisTables.WATCH);
       if(canRead(DataAnalysisTables.WATCH))
       {
+         var watches = group("Watches");
          watches.withStatisticList(List.of(stat("Enabled", count(DataAnalysisTables.WATCH, equal("enabled", true)), DataAnalysisTables.WATCH),
             stat("Firing", count(DataAnalysisTables.WATCH, equal("state", "FIRING")), DataAnalysisTables.WATCH)));
+         groups.add(watches);
       }
-      groups.add(watches);
-      var runs = group("My runs", DataAnalysisTables.RUN);
       if(canRead(DataAnalysisTables.RUN))
       {
+         var runs = group("My runs");
          runs.withStatisticList(List.of(stat("Last 7 days", count(DataAnalysisTables.RUN, equal("user_id", SavedAnalyses.user())
             .withCriteria("started_at", QCriteriaOperator.GREATER_THAN_OR_EQUALS, now.minus(7, ChronoUnit.DAYS))
             .withCriteria("started_at", QCriteriaOperator.LESS_THAN_OR_EQUALS, now)), DataAnalysisTables.RUN)));
+         groups.add(runs);
       }
-      groups.add(runs);
       return (new MultiStatisticsData("Analyses", groups));
    }
 
    /*******************************************************************************
-    ** Empty/denied data are different messages, not synthetic zeroes.
+    ** A group is only built for a readable subject, so its subheader is always true.
     *******************************************************************************/
-   private static MultiStatisticsData.StatisticsGroupData group(String label, String table)
+   private static MultiStatisticsData.StatisticsGroupData group(String label)
    {
-      return (new MultiStatisticsData.StatisticsGroupData().withHeader(label).withStatisticList(List.of())
-         .withSubheader(canRead(table) ? "Visible to you" : "Unavailable: READ permission required."));
+      return (new MultiStatisticsData.StatisticsGroupData().withHeader(label).withStatisticList(List.of()).withSubheader("Visible to you"));
    }
 
    /*******************************************************************************
@@ -257,7 +292,7 @@ public class DataAnalysisHome extends AbstractWidgetRenderer
       {
          columns.add(new TableData.Column(i == 0 ? "html" : "text", headers[i], "c" + i, null, "left"));
       }
-      return (new TableData(label, columns, new ArrayList<>()).withNoRowsFoundHTML(canRead(table) ? empty : "Unavailable: READ permission required.")
+      return (new TableData(label, columns, new ArrayList<>()).withNoRowsFoundHTML(empty)
          .withLinkText("View all").withLinkURL(QContext.getQInstance().getTablePath(table)).withRowsPerPage(10));
    }
 
