@@ -427,6 +427,28 @@ public class DataAnalysisQBitConfig implements QBitConfig
       return (this);
    }
 
+   private String servicePrincipal = "data-analysis";
+
+   /*******************************************************************************
+    ** The service principal schedules and watches run as when the host declares
+    ** it (QQQ service identities): inventory as the principal, owner and
+    ** recipient runs on their behalf through it. Undeclared: the previous local
+    ** sessions.
+    *******************************************************************************/
+   public String getServicePrincipal()
+   {
+      return (servicePrincipal);
+   }
+
+   /*******************************************************************************
+    ** Fluent setter for servicePrincipal (default data-analysis).
+    *******************************************************************************/
+   public DataAnalysisQBitConfig withServicePrincipal(String servicePrincipal)
+   {
+      this.servicePrincipal = servicePrincipal;
+      return (this);
+   }
+
    private String messagingProviderName;
    private String fromAddress;
    private transient java.util.function.Function<String, String> recipientAddressSupplier;

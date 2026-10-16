@@ -49,7 +49,6 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
-import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 
 /*******************************************************************************
  ** Transition watches through the core alerts SPI, computing exclusively as owner.
@@ -94,13 +93,17 @@ public class WatchEvaluator
     *******************************************************************************/
    public synchronized Integer evaluateEnabled(Instant now) throws QException
    {
-      QSession maintenance = new QSession().withUser(new QUser().withIdReference("data-analysis-scheduler"))
-         .withPermissions("data_analysis.watch.read", "data_analysis.watch.edit")
-         .withSecurityKeyValue(DataAnalysisPermissions.ADMIN, true);
-      if(QContext.getQSession().getBackendVariants() != null)
+      QSession maintenance = com.kingsrook.qbits.dataanalysis.schedule.AnalysisSessions.maintenance(config, () ->
       {
-         maintenance.setBackendVariants(new java.util.HashMap<>(QContext.getQSession().getBackendVariants()));
-      }
+         QSession legacy = new QSession().withUser(new QUser().withIdReference("data-analysis-scheduler"))
+            .withPermissions("data_analysis.watch.read", "data_analysis.watch.edit")
+            .withSecurityKeyValue(DataAnalysisPermissions.ADMIN, true);
+         if(QContext.getQSession().getBackendVariants() != null)
+         {
+            legacy.setBackendVariants(new java.util.HashMap<>(QContext.getQSession().getBackendVariants()));
+         }
+         return (legacy);
+      });
       int[] count = {0};
       QContext.withTemporaryContext(new CapturedContext(QContext.getQInstance(), maintenance), () ->
       {
@@ -128,9 +131,7 @@ public class WatchEvaluator
       QSession session;
       try
       {
-         session = config.getOwnerSessionSupplier() == null
-            ? new QAuthenticationModuleDispatcher().getQModule(QContext.getQInstance().getAuthentication()).createAutomatedSessionForUser(QContext.getQInstance(), owner)
-            : config.getOwnerSessionSupplier().apply(owner);
+         session = com.kingsrook.qbits.dataanalysis.schedule.AnalysisSessions.forUser(config, owner);
       }
       catch(Exception e)
       {

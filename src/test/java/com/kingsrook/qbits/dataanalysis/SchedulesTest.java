@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qbits.dataanalysis.model.DataAnalysisTables;
+import com.kingsrook.qbits.dataanalysis.permissions.DataAnalysisPermissions;
 import com.kingsrook.qbits.dataanalysis.processes.ScheduleActions;
 import com.kingsrook.qbits.dataanalysis.saved.AnalysisExport;
 import com.kingsrook.qbits.dataanalysis.saved.SavedDefinition;
@@ -47,6 +48,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.messaging.QMessagingProvide
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.messaging.MessagingProviderInterface;
 import com.kingsrook.qqq.backend.core.modules.messaging.QMessagingProviderDispatcher;
+import com.kingsrook.qqq.backend.core.serviceidentity.QServicePrincipalMetaData;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentitiesMetaData;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -158,6 +161,27 @@ class SchedulesTest extends EngineFixture
       assertThat(stored.getValueInstant("next_run_at")).isAfter(NOW);
       assertThat(runner.runDue(NOW)).isZero();
       assertThat(WatchesTest.Sink.raised).isEmpty();
+   }
+
+   /*******************************************************************************
+    ** With the host's data-analysis principal declared, schedule inventory runs
+    ** as the principal (its grants decide - a principal without them finds
+    ** nothing due), never as a self-made session.
+    *******************************************************************************/
+   @Test
+   void inventoryRunsAsTheDeclaredPrincipal() throws Exception
+   {
+      schedule("PIVOT", Map.of("rows", List.of(Map.of("field", "status")), "values", List.of(Map.of("operator", "COUNT"))), "CSV");
+      config.withServicePrincipal("analysis-bare");
+      ServiceIdentitiesMetaData.declare(instance, new QServicePrincipalMetaData().withName("analysis-bare"));
+      assertThatThrownBy(() -> runner.runDue(NOW)).isInstanceOf(QException.class);
+      assertThat(Mail.sent).isEmpty();
+
+      ServiceIdentitiesMetaData.declare(instance, new QServicePrincipalMetaData().withName("data-analysis")
+         .withLocalPermissions("data_analysis.saved.read", "data_analysis.saved.edit").withLocalSecurityKeyValue(DataAnalysisPermissions.ADMIN, true));
+      config.withServicePrincipal("data-analysis");
+      assertThat(runner.runDue(NOW)).isEqualTo(1);
+      assertThat(Mail.sent).hasSize(2);
    }
 
    @Test
