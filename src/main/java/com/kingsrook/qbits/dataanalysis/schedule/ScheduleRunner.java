@@ -58,7 +58,6 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
-import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 
 /*******************************************************************************
  ** Scheduled work uses owner and recipient sessions; maintenance only inventories rows.
@@ -83,13 +82,17 @@ public class ScheduleRunner
     *******************************************************************************/
    public synchronized Integer runDue(Instant now) throws QException
    {
-      QSession maintenance = new QSession().withUser(new QUser().withIdReference("data-analysis-scheduler"))
-         .withPermissions("data_analysis.saved.read", "data_analysis.saved.edit")
-         .withSecurityKeyValue(DataAnalysisPermissions.ADMIN, true);
-      if(QContext.getQSession().getBackendVariants() != null)
+      QSession maintenance = AnalysisSessions.maintenance(config, () ->
       {
-         maintenance.setBackendVariants(new java.util.HashMap<>(QContext.getQSession().getBackendVariants()));
-      }
+         QSession legacy = new QSession().withUser(new QUser().withIdReference("data-analysis-scheduler"))
+            .withPermissions("data_analysis.saved.read", "data_analysis.saved.edit")
+            .withSecurityKeyValue(DataAnalysisPermissions.ADMIN, true);
+         if(QContext.getQSession().getBackendVariants() != null)
+         {
+            legacy.setBackendVariants(new java.util.HashMap<>(QContext.getQSession().getBackendVariants()));
+         }
+         return (legacy);
+      });
       int[] count = {0};
       QContext.withTemporaryContext(new CapturedContext(QContext.getQInstance(), maintenance), () ->
       {
@@ -161,9 +164,7 @@ public class ScheduleRunner
       QSession session;
       try
       {
-         session = config.getOwnerSessionSupplier() == null
-            ? new QAuthenticationModuleDispatcher().getQModule(QContext.getQInstance().getAuthentication()).createAutomatedSessionForUser(QContext.getQInstance(), id)
-            : config.getOwnerSessionSupplier().apply(id);
+         session = AnalysisSessions.forUser(config, id);
       }
       catch(Exception e)
       {
