@@ -213,7 +213,7 @@ class DataAnalysisMetadataTest
          "modify_date TIMESTAMP WITHOUT TIME ZONE", "rows_scanned BIGINT", "result_json TEXT", "shared BOOLEAN", "day INTEGER",
          "owner_user_id VARCHAR(250) NOT NULL", "date_field VARCHAR(250) NOT NULL", "last_value NUMERIC", "last_message TEXT", "CREATE UNIQUE INDEX IF NOT EXISTS uq_data_analysis_table_config_1 ON data_analysis_table_config (table_name)",
          "CREATE UNIQUE INDEX IF NOT EXISTS uq_data_analysis_saved_star_1 ON data_analysis_saved_star (saved_id, user_id)",
-         "CHECK (shared = TRUE OR read_owner_user_id IS NOT NULL)");
+         "CHECK (shared IS TRUE OR read_owner_user_id IS NOT NULL)");
       assertThat(ddl).endsWith(";\n");
    }
 }

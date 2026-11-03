@@ -63,7 +63,7 @@ public final class DataAnalysisSchema
             // a null read-owner projection means "shared": make the database refuse it //
             // on a private row, so a row written outside QQQ fails closed, not open    //
             ///////////////////////////////////////////////////////////////////////////////
-            columns.add("   CONSTRAINT ck_data_analysis_saved_read_owner CHECK (shared = TRUE OR read_owner_user_id IS NOT NULL)");
+            columns.add("   CONSTRAINT ck_data_analysis_saved_read_owner CHECK (shared IS TRUE OR read_owner_user_id IS NOT NULL)");
          }
          statements.add("CREATE TABLE IF NOT EXISTS " + table.getName() + " (\n" + String.join(",\n", columns) + "\n)");
          if(table.getUniqueKeys() != null)
