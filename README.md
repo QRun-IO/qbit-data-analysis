@@ -100,6 +100,14 @@ ALTER TABLE data_analysis_schedule ALTER COLUMN last_status TYPE TEXT;
 
 The metadata-generated create script includes these fields for new installations; it does not migrate existing databases. Fix older placeholder definitions (such as `{}` for a column profile) to valid typed requests. Edit existing enabled schedules through core CRUD to validate recipients and initialize `next_run_at`.
 
+Installations created with the earlier generated constraint also need a new host migration after ensuring the read-owner projection is populated. SQL CHECK constraints accept UNKNOWN, so `shared = TRUE` allowed a null shared flag and null read owner. Only explicit sharing may omit the read owner:
+
+```sql
+ALTER TABLE data_analysis_saved
+   DROP CONSTRAINT IF EXISTS ck_data_analysis_saved_read_owner,
+   ADD CONSTRAINT ck_data_analysis_saved_read_owner CHECK (shared IS TRUE OR read_owner_user_id IS NOT NULL);
+```
+
 Minimum group size defaults to 0 (off). Hosts should set it for personal-data tables. Groups, bins and distinct listings below N are merged into an Other row with no value or drill. Min/max, percentiles, mean and standard deviation are suppressed when the assessed population is below N. Outlier listings and their count's drill are removed whenever the guard is enabled. The guard runs before chart construction and before `result_json` is stored.
 
 Source fields must be present in personalized metadata, pass `FieldSecurityLockHelper`, and pass the configured allow/exclude lists. FK labels are queried with enforcement before core PVS formatting; unreadable related records or label fields fall back to the source id. This avoids RC.5's ordinary table-PVS translator's trusted permission bypass.
