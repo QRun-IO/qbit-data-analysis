@@ -4,6 +4,10 @@ Following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic
 
 ## [Unreleased]
 
+### Changed
+
+- Reconciled legacy release-branch history with the current Gitea CI while retaining the develop SNAPSHOT revision, so normal RC cuts can merge cleanly.
+
 ### Fixed
 
 - Reject saved analyses with a NULL or false shared flag and no read owner in the generated schema. Existing hosts must apply the documented constraint correction through a new migration.
